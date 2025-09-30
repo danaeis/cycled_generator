@@ -1,0 +1,62 @@
+{
+    "spleen": 1, 
+    "gallbladder": 4,
+    "liver": 5,
+    "stomach": 6,
+    "pancreas": 10,
+    "small_bowel": 55,
+    "duodenum": 56,
+    "colon": 57,
+    
+    "kidney_right": 2, 
+    "kidney_left": 3,
+    "urinary_bladder": 104,
+    
+    
+    "adrenal_gland_right": 11,
+    "adrenal_gland_left": 12,
+    
+   
+    "aorta": 7,
+    "inferior_vena_cava": 8,
+    "portal_vein_and_splenic_vein": 9,
+    "iliac_artery_left": 51,
+    "iliac_artery_right": 52,
+    "iliac_vena_left": 53,
+    "iliac_vena_right": 54,
+    
+    
+    "vertebrae_L5": 18,
+    "vertebrae_L4": 19,
+    "vertebrae_L3": 20,
+    "vertebrae_L2": 21,
+    "vertebrae_L1": 22,
+    "vertebrae_T12": 23,
+    "vertebrae_T11": 24,
+    "vertebrae_T10": 25,
+    "vertebrae_T9": 26,
+    "vertebrae_T8": 27,
+    "vertebrae_T7": 28,
+    "vertebrae_T6": 29,
+    "vertebrae_T5": 30,
+    "vertebrae_T4": 31,
+    "vertebrae_T3": 32,
+    "vertebrae_T2": 33,
+    "vertebrae_T1": 34,
+    
+    
+    "hip_left": 90,
+    "hip_right": 91,
+    "sacrum": 92,
+    "gluteus_maximus_left": 94,
+    "gluteus_maximus_right": 95,
+    "gluteus_medius_left": 96,
+    "gluteus_medius_right": 97,
+    "gluteus_minimus_left": 98,
+    "gluteus_minimus_right": 99,
+    "autochthon_left": 100,
+    "autochthon_right": 101,
+    "iliopsoas_left": 102,
+    "iliopsoas_right": 103
+
+}

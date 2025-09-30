@@ -1,0 +1,7 @@
+{
+    "testing": [
+        {
+            "image": "dcm2niix_sample.nii.gz"
+        }
+    ]
+}
