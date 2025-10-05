@@ -323,11 +323,11 @@ def run_full_training():
     config = {
         'data_dir': '../ncct_cect/vindr_ds/test_registered_cases',
         'labels_csv': '../ncct_cect/vindr_ds/labels.csv',
-        'output_dir': '../ncct_cect/vindr_ds/loss_handled_training',
+        'output_dir': '../ncct_cect/vindr_ds/test_cpatch96_training',
         
-        'patch_size': (64, 64),
-        'patch_depth': 16,
-        'overlap_ratio': 0.75,
+        'patch_size': (96, 96),
+        'patch_depth': 10,
+        'overlap_ratio': 0.5,
         'disc_lr_multiplier':2.0,
 
         'batch_size': 1,
@@ -355,7 +355,7 @@ def run_full_training():
         patch_size=config['patch_size'],
         patch_depth=config['patch_depth'],
         overlap_ratio=config['overlap_ratio'],
-        augment=True
+        augment=False
     )
     
     val_dataset = CTPhaseDataset(
