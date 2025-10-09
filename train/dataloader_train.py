@@ -5,10 +5,14 @@ Helper functions to load and prepare your CT data for training.
 """
 
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from typing import Dict, List, Tuple
 import logging
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +258,349 @@ def debug_dataset(dataset, num_samples: int = 3):
             traceback.print_exc()
 
 
+def visualize_single_patch(
+    sample: Dict,
+    save_path: Path,
+    show_all_slices: bool = False
+):
+    """
+    Visualize a single patch with detailed information.
+    
+    Args:
+        sample: Sample dictionary from dataset
+        save_path: Path to save visualization
+        show_all_slices: If True, show all depth slices, else just middle slice
+    """
+    source = sample['source'].squeeze().numpy()  # [D, H, W]
+    target = sample['target'].squeeze().numpy()  # [D, H, W]
+    
+    depth, height, width = source.shape
+    
+    if show_all_slices:
+        # Show all slices in grid
+        n_slices = depth
+        fig, axes = plt.subplots(2, n_slices, figsize=(3*n_slices, 6))
+        
+        for i in range(n_slices):
+            # Source
+            im0 = axes[0, i].imshow(source[i], cmap='gray', vmin=-3, vmax=3)
+            axes[0, i].set_title(f'Source Slice {i}', fontsize=10)
+            axes[0, i].axis('off')
+            plt.colorbar(im0, ax=axes[0, i], fraction=0.046)
+            
+            # Target
+            im1 = axes[1, i].imshow(target[i], cmap='gray', vmin=-3, vmax=3)
+            axes[1, i].set_title(f'Target Slice {i}', fontsize=10)
+            axes[1, i].axis('off')
+            plt.colorbar(im1, ax=axes[1, i], fraction=0.046)
+    else:
+        # Show only middle slice with more detail
+        mid_slice = depth // 2
+        
+        fig = plt.figure(figsize=(18, 12))
+        gs = gridspec.GridSpec(3, 3, figure=fig, hspace=0.3, wspace=0.3)
+        
+        # Row 1: Source and Target middle slices
+        ax1 = fig.add_subplot(gs[0, 0])
+        im1 = ax1.imshow(source[mid_slice], cmap='gray', vmin=-3, vmax=3)
+        ax1.set_title(f'Source: {sample["source_phase"]}', fontsize=12, fontweight='bold')
+        ax1.axis('off')
+        plt.colorbar(im1, ax=ax1, fraction=0.046)
+        
+        ax2 = fig.add_subplot(gs[0, 1])
+        im2 = ax2.imshow(target[mid_slice], cmap='gray', vmin=-3, vmax=3)
+        ax2.set_title(f'Target: {sample["target_phase"]}', fontsize=12, fontweight='bold')
+        ax2.axis('off')
+        plt.colorbar(im2, ax=ax2, fraction=0.046)
+        
+        # Difference map
+        ax3 = fig.add_subplot(gs[0, 2])
+        diff = np.abs(source[mid_slice] - target[mid_slice])
+        im3 = ax3.imshow(diff, cmap='hot', vmin=0, vmax=2)
+        ax3.set_title('Absolute Difference', fontsize=12, fontweight='bold')
+        ax3.axis('off')
+        plt.colorbar(im3, ax=ax3, fraction=0.046)
+        
+        # Row 2: Histogram comparisons
+        ax4 = fig.add_subplot(gs[1, 0])
+        ax4.hist(source[mid_slice].flatten(), bins=50, alpha=0.7, label='Source', color='blue')
+        ax4.hist(target[mid_slice].flatten(), bins=50, alpha=0.7, label='Target', color='red')
+        ax4.set_xlabel('Intensity Value')
+        ax4.set_ylabel('Frequency')
+        ax4.set_title('Intensity Distributions', fontweight='bold')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+        
+        # Center profile (vertical)
+        ax5 = fig.add_subplot(gs[1, 1])
+        center_x = width // 2
+        ax5.plot(source[mid_slice, :, center_x], label='Source', linewidth=2)
+        ax5.plot(target[mid_slice, :, center_x], label='Target', linewidth=2)
+        ax5.set_xlabel('Y Position')
+        ax5.set_ylabel('Intensity')
+        ax5.set_title(f'Vertical Profile (X={center_x})', fontweight='bold')
+        ax5.legend()
+        ax5.grid(True, alpha=0.3)
+        
+        # Center profile (horizontal)
+        ax6 = fig.add_subplot(gs[1, 2])
+        center_y = height // 2
+        ax6.plot(source[mid_slice, center_y, :], label='Source', linewidth=2)
+        ax6.plot(target[mid_slice, center_y, :], label='Target', linewidth=2)
+        ax6.set_xlabel('X Position')
+        ax6.set_ylabel('Intensity')
+        ax6.set_title(f'Horizontal Profile (Y={center_y})', fontweight='bold')
+        ax6.legend()
+        ax6.grid(True, alpha=0.3)
+        
+        # Row 3: All slices montage
+        ax7 = fig.add_subplot(gs[2, :])
+        montage_source = np.hstack([source[i] for i in range(depth)])
+        montage_target = np.hstack([target[i] for i in range(depth)])
+        montage = np.vstack([montage_source, montage_target])
+        im7 = ax7.imshow(montage, cmap='gray', vmin=-3, vmax=3, aspect='auto')
+        ax7.set_title('All Slices Montage (Top: Source, Bottom: Target)', fontweight='bold')
+        ax7.set_ylabel('Source (top) / Target (bottom)')
+        ax7.set_xlabel('Concatenated Slices')
+        slice_positions = [i * width + width//2 for i in range(depth)]
+        ax7.set_xticks(slice_positions)
+        ax7.set_xticklabels([f'S{i}' for i in range(depth)], fontsize=8)
+        plt.colorbar(im7, ax=ax7, fraction=0.02)
+    
+    # Add overall title with metadata
+    title = (f'Patch Visualization - Case: {sample["case_id"]}\n'
+             f'{sample["source_phase"]} → {sample["target_phase"]} | '
+             f'Shape: {source.shape} | '
+             f'Patch Center: {sample.get("patch_center", "N/A")}\n'
+             f'Value Range - Source: [{source.min():.2f}, {source.max():.2f}], '
+             f'Target: [{target.min():.2f}, {target.max():.2f}]')
+    
+    fig.suptitle(title, fontsize=12, fontweight='bold', y=0.98)
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved patch visualization to {save_path}")
+
+
+def debug_dataset_with_visualization(
+    dataset, 
+    num_samples: int = 5,
+    output_dir: str = './debug_patches'
+):
+    """
+    Debug dataset by loading and visualizing samples.
+    
+    Args:
+        dataset: CTPhaseDataset instance
+        num_samples: Number of samples to visualize
+        output_dir: Directory to save visualizations
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("\n" + "=" * 80)
+    print("DEBUGGING DATASET WITH VISUALIZATION")
+    print("=" * 80)
+    
+    print(f"Dataset length: {len(dataset)}")
+    print(f"Saving visualizations to: {output_dir}")
+    
+    # Statistics accumulators
+    all_source_ranges = []
+    all_target_ranges = []
+    all_shapes = []
+    
+    for i in range(min(num_samples, len(dataset))):
+        try:
+            sample = dataset[i]
+            
+            print(f"\n{'='*60}")
+            print(f"Sample {i}:")
+            print(f"  Case ID: {sample['case_id']}")
+            print(f"  Source shape: {sample['source'].shape}")
+            print(f"  Target shape: {sample['target'].shape}")
+            print(f"  Source phase: {sample['source_phase']}")
+            print(f"  Target phase: {sample['target_phase']}")
+            print(f"  Phase indices: {sample['source_phase_idx']} → {sample['target_phase_idx']}")
+            print(f"  Patch center: {sample.get('patch_center', 'N/A')}")
+            
+            # Check value ranges
+            source_min = sample['source'].min().item()
+            source_max = sample['source'].max().item()
+            target_min = sample['target'].min().item()
+            target_max = sample['target'].max().item()
+            
+            print(f"  Source range: [{source_min:.3f}, {source_max:.3f}]")
+            print(f"  Target range: [{target_min:.3f}, {target_max:.3f}]")
+            
+            all_source_ranges.append((source_min, source_max))
+            all_target_ranges.append((target_min, target_max))
+            all_shapes.append(sample['source'].shape)
+            
+            # Check masks
+            if sample['masks']:
+                print(f"  Available masks: {list(sample['masks'].keys())}")
+                for organ, mask in sample['masks'].items():
+                    mask_sum = mask.sum().item()
+                    if mask_sum > 0:
+                        print(f"    - {organ}: {mask_sum:.0f} voxels ({100*mask_sum/mask.numel():.1f}%)")
+            else:
+                print(f"  No masks available")
+            
+            # Visualize this patch
+            save_path = output_dir / f'patch_{i:03d}_case_{sample["case_id"]}.png'
+            visualize_single_patch(sample, save_path, show_all_slices=False)
+            
+            # Also save all slices version for first few samples
+            if i < 2:
+                save_path_all = output_dir / f'patch_{i:03d}_allslices_case_{sample["case_id"]}.png'
+                visualize_single_patch(sample, save_path_all, show_all_slices=True)
+            
+        except Exception as e:
+            print(f"✗ Error loading sample {i}: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Print overall statistics
+    print("\n" + "=" * 80)
+    print("OVERALL STATISTICS")
+    print("=" * 80)
+    
+    if all_source_ranges:
+        print(f"\nValue Ranges across all samples:")
+        print(f"  Source min: {min(r[0] for r in all_source_ranges):.3f}")
+        print(f"  Source max: {max(r[1] for r in all_source_ranges):.3f}")
+        print(f"  Target min: {min(r[0] for r in all_target_ranges):.3f}")
+        print(f"  Target max: {max(r[1] for r in all_target_ranges):.3f}")
+    
+    if all_shapes:
+        unique_shapes = set(all_shapes)
+        print(f"\nUnique patch shapes: {unique_shapes}")
+    
+    print(f"\n✓ Saved {min(num_samples, len(dataset))} patch visualizations to {output_dir}")
+
+def create_patch_coverage_map(
+    dataset,
+    case_idx: int = 0,
+    output_dir: str = './debug_patches'
+):
+    """
+    Visualize where patches are extracted from in the full volume.
+    
+    Args:
+        dataset: CTPhaseDataset instance
+        case_idx: Which case to visualize (index into data_pairs)
+        output_dir: Directory to save visualization
+    """
+    import nibabel as nib
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("\n" + "=" * 80)
+    print(f"CREATING PATCH COVERAGE MAP FOR CASE {case_idx}")
+    print("=" * 80)
+    
+    # Get all patches for this case
+    case_patches = [
+        (idx, coords) for idx, coords in enumerate(dataset.patch_coords)
+        if coords[0] == case_idx
+    ]
+    
+    if not case_patches:
+        print(f"No patches found for case {case_idx}")
+        return
+    
+    print(f"Found {len(case_patches)} patches for this case")
+    
+    # Load the volume to get dimensions
+    pair_data = dataset.data_pairs[case_idx]
+    source_vol = nib.load(pair_data['source_path']).get_fdata()
+    depth, height, width = source_vol.shape
+    
+    print(f"Volume shape: {source_vol.shape}")
+    
+    # Create coverage map
+    coverage_map = np.zeros((height, width), dtype=np.int32)
+    
+    # Mark each patch location
+    for _, (_, center_z, y_start, x_start) in case_patches:
+        y_end = y_start + dataset.patch_size[0]
+        x_end = x_start + dataset.patch_size[1]
+        coverage_map[y_start:y_end, x_start:x_end] += 1
+    
+    # Visualize
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    
+    # Middle slice of volume
+    mid_slice = depth // 2
+    source_slice = source_vol[mid_slice]
+    
+    ax1 = axes[0]
+    im1 = ax1.imshow(source_slice, cmap='gray', vmin=-100, vmax=300)
+    ax1.set_title(f'Original Volume (Slice {mid_slice}/{depth})', fontweight='bold')
+    ax1.axis('off')
+    plt.colorbar(im1, ax=ax1, fraction=0.046)
+    
+    # Coverage map
+    ax2 = axes[1]
+    im2 = ax2.imshow(coverage_map, cmap='hot', interpolation='nearest')
+    ax2.set_title(f'Patch Coverage Map\n(Max overlap: {coverage_map.max()})', 
+                  fontweight='bold')
+    ax2.axis('off')
+    plt.colorbar(im2, ax=ax2, fraction=0.046)
+    
+    # Overlay
+    ax3 = axes[2]
+    ax3.imshow(source_slice, cmap='gray', vmin=-100, vmax=300, alpha=0.7)
+    overlay = np.ma.masked_where(coverage_map == 0, coverage_map)
+    im3 = ax3.imshow(overlay, cmap='hot', alpha=0.5, interpolation='nearest')
+    
+    # Draw patch rectangles for first few patches
+    for i, (_, (_, center_z, y_start, x_start)) in enumerate(case_patches[:20]):
+        y_end = y_start + dataset.patch_size[0]
+        x_end = x_start + dataset.patch_size[1]
+        color = 'green' if i < 5 else 'yellow'
+        rect = plt.Rectangle((x_start, y_start), 
+                            dataset.patch_size[1], dataset.patch_size[0],
+                            fill=False, edgecolor=color, linewidth=1)
+        ax3.add_patch(rect)
+        
+        if i < 5:
+            # Add patch number
+            ax3.text(x_start, y_start, str(i), color='white', 
+                    fontsize=8, fontweight='bold',
+                    bbox=dict(boxstyle='round', facecolor=color, alpha=0.7))
+    
+    ax3.set_title(f'Coverage Overlay\n(First 20 patches shown)', fontweight='bold')
+    ax3.axis('off')
+    plt.colorbar(im3, ax=ax3, fraction=0.046)
+    
+    fig.suptitle(f'Patch Extraction Coverage - Case {case_idx}: {pair_data["case_id"]}\n'
+                 f'Patch Size: {dataset.patch_size}, Depth: {dataset.patch_depth}, '
+                 f'Overlap: {dataset.overlap_ratio}',
+                 fontsize=12, fontweight='bold')
+    
+    plt.tight_layout()
+    save_path = output_dir / f'patch_coverage_case_{case_idx}.png'
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"✓ Saved coverage map to {save_path}")
+    
+    # Print statistics
+    print(f"\nCoverage Statistics:")
+    print(f"  Total patches: {len(case_patches)}")
+    print(f"  Max overlap: {coverage_map.max()}x")
+    print(f"  Mean overlap: {coverage_map[coverage_map > 0].mean():.2f}x")
+    print(f"  Coverage: {100 * (coverage_map > 0).sum() / coverage_map.size:.1f}%")
+
+
+
+
+
 def debug_model(config: Dict):
     """Debug model architecture."""
     import torch
@@ -325,7 +672,7 @@ def run_full_training():
         'labels_csv': '../ncct_cect/vindr_ds/labels.csv',
         'output_dir': '../ncct_cect/vindr_ds/test_cpatch96_training',
         
-        'patch_size': (96, 96),
+        'patch_size': (96,128),
         'patch_depth': 10,
         'overlap_ratio': 0.5,
         'disc_lr_multiplier':2.0,
@@ -334,7 +681,10 @@ def run_full_training():
         'learning_rate': 2e-4,
         'epochs': 100,
         
-        'device': 'cuda' if torch.cuda.is_available() else 'cpu'
+        'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+        # Debug options
+        'debug_patches': True,
+        'debug_output_dir': './debug_patches'
     }
     
     print("=" * 80)
@@ -367,7 +717,34 @@ def run_full_training():
     )
     
     # Step 3: Debug dataset
-    debug_dataset(train_dataset, num_samples=2)
+    if config.get('debug_patches', True):
+        print("\nStep 3: Visualizing Patches (NEW!)")
+        print("=" * 80)
+        
+        debug_dataset_with_visualization(
+            train_dataset,
+            num_samples=config.get('num_debug_samples', 5),
+            output_dir=config.get('debug_output_dir', './debug_patches')
+        )
+        
+        # Also create coverage map for first case
+        if len(train_dataset.data_pairs) > 0:
+            create_patch_coverage_map(
+                train_dataset,
+                case_idx=0,
+                output_dir=config.get('debug_output_dir', './debug_patches')
+            )
+        
+        print("\n" + "=" * 80)
+        print("PATCH DEBUGGING COMPLETE!")
+        print("=" * 80)
+        print(f"\nCheck the debug output directory: {config.get('debug_output_dir', './debug_patches')}")
+        print("Files generated:")
+        print("  - patch_XXX_case_YYY.png: Individual patch visualizations")
+        print("  - patch_XXX_allslices_case_YYY.png: All depth slices")
+        print("  - patch_coverage_case_X.png: Spatial coverage map")
+        print("\n" + "=" * 80)
+    # debug_dataset(train_dataset, num_samples=2)
     
     # Step 4: Debug model
     print("\nStep 3: Model Architecture")

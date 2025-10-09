@@ -1,0 +1,298 @@
+
+Step 1: Data Loading
+================================================================================
+DEBUGGING DATA LOADING
+================================================================================
+✓ Loaded phase mapping for 265 cases
+2025-09-28 15:04:36,080 - INFO - Found 4 valid cases
+2025-09-28 15:04:36,083 - INFO - Data splits created:
+2025-09-28 15:04:36,083 - INFO -   Train: 2 cases, 4 pairs
+2025-09-28 15:04:36,083 - INFO -   Val: 1 cases, 2 pairs
+2025-09-28 15:04:36,083 - INFO -   Test: 1 cases, 2 pairs
+✓ Created data splits successfully
+
+Sample training pair:
+  Case: 1.2.840.113619.2.278.3.717616.306.1582703645.511
+  Source: non-contrast -> 1.2.840.113619.2.278.3.717616.306.1582703645.511_1.2.840.113619.2.278.3.717616.306.1582703
+645.516.3_registered.nii.gz
+  Target: arterial -> 1.2.840.113619.2.278.3.717616.306.1582703645.511_1.2.840.113619.2.278.3.717616.306.1582703645.
+622.4198401_registered.nii.gz
+  Has segmentation: ✓
+
+Step 2: Creating Datasets
+2025-09-28 15:04:36,083 - INFO - Initializing dataset with 4 pairs
+2025-09-28 15:04:36,083 - INFO - Patch size: (64, 64), Depth: 16, Overlap: 0.75
+2025-09-28 15:04:36,494 - INFO - Pair 0: Generated 4455 patches
+2025-09-28 15:04:36,868 - INFO - Pair 1: Generated 4455 patches
+2025-09-28 15:04:37,497 - INFO - Pair 2: Generated 8940 patches
+2025-09-28 15:04:38,164 - INFO - Pair 3: Generated 8940 patches
+2025-09-28 15:04:38,169 - INFO - Generated 26790 total patches
+2025-09-28 15:04:38,169 - INFO - Initializing dataset with 2 pairs
+2025-09-28 15:04:38,170 - INFO - Patch size: (64, 64), Depth: 16, Overlap: 0.5
+2025-09-28 15:04:38,922 - INFO - Pair 0: Generated 3465 patches
+2025-09-28 15:04:39,682 - INFO - Pair 1: Generated 3465 patches
+2025-09-28 15:04:39,688 - INFO - Generated 6930 total patches
+
+================================================================================
+DEBUGGING DATASET
+================================================================================
+Dataset length: 26790
+
+Sample 0:
+  Source shape: torch.Size([1, 17, 64, 64])
+  Target shape: torch.Size([1, 17, 64, 64])
+  Source phase: non-contrast
+  Target phase: arterial
+  Phase indices: 0 -> 1
+  Masks: ['liver', 'kidney_right', 'kidney_left', 'spleen']
+  Case ID: 1.2.840.113619.2.278.3.717616.306.1582703645.511
+  Source range: [-0.84, 3.35]
+  Target range: [-0.87, 2.94]
+
+Sample 1:
+  Source shape: torch.Size([1, 17, 64, 64])
+  Target shape: torch.Size([1, 17, 64, 64])
+  Source phase: non-contrast
+  Target phase: arterial
+  Phase indices: 0 -> 1
+  Masks: ['liver', 'kidney_right', 'kidney_left', 'spleen']
+  Case ID: 1.2.840.113619.2.278.3.717616.306.1582703645.511
+  Source range: [-0.84, 3.35]
+  Target range: [-0.87, 2.94]
+
+Step 3: Model Architecture
+
+================================================================================
+DEBUGGING MODEL
+================================================================================
+Testing Generator:
+  Input shape: torch.Size([2, 1, 16, 64, 64])
+  Phase indices: tensor([1, 2], device='cuda:0')
+  Output shape: torch.Size([2, 1, 16, 64, 64])
+  ✓ Generator works!
+
+Testing Discriminator:
+  Discriminator output shape: torch.Size([2, 1, 3, 1, 1])
+  ✓ Discriminator works!
+
+Testing full forward pass:
+  Source -> Target: torch.Size([2, 1, 16, 64, 64]) -> torch.Size([2, 1, 16, 64, 64])
+  Target -> Reconstructed: torch.Size([2, 1, 16, 64, 64]) -> torch.Size([2, 1, 16, 64, 64])
+  ✓ Cycle consistency works!
+
+Step 4: Creating DataLoaders
+✓ Train loader: 26790 batches
+✓ Val loader: 6930 batches
+
+Step 5: Initializing Trainer
+2025-09-28 15:04:41,757 - INFO - Initializing models...
+2025-09-28 15:04:43,040 - INFO - Trainer initialized on cuda
+2025-09-28 15:04:43,040 - INFO - Generator LR: 0.000200
+2025-09-28 15:04:43,040 - INFO - Discriminator LR: 0.000400
+2025-09-28 15:04:43,040 - INFO - Label smoothing: Real=0.9, Fake=0.1
+2025-09-28 15:04:43,040 - INFO - Discriminator updates per generator update: 2
+
+Step 6: Starting Training
+================================================================================
+2025-09-28 15:04:43,040 - INFO - Starting training for 100 epochs
+2025-09-28 15:04:43,040 - INFO - Training batches: 26790, Val batches: 6930
+Epoch 1: 100%|███████████████████████████████████████████| 26790/26790 [1:31:27<00:00,  4.88it/s, Gen=28.480, Disc=0
+.325, Phase=non-contrast->arterial]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:23<00:00,  3.57it/s, L
+oss=0.4582, PSNR=9.41, SSIM=0.4529]
+2025-09-28 17:08:33,381 - INFO -
+Epoch 1/100 Summary:
+2025-09-28 17:08:33,382 - INFO -   Train - Total: 49.7405, Cycle: 3.5975, MSE: 36.9682, Focal: 9.1749
+2025-09-28 17:08:33,382 - INFO -   Disc: 0.3404
+2025-09-28 17:08:33,382 - INFO -   Val - Loss: 0.3941, PSNR: 10.85 dB, SSIM: 0.3803
+2025-09-28 17:08:33,382 - INFO - Saving sample patches for epoch 1...
+2025-09-28 17:08:41,622 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_1
+2025-09-28 17:08:46,337 - INFO - New best model saved! Val loss: 0.3941, PSNR: 10.85, SSIM: 0.3803
+Epoch 2: 100%|███████████████████████████████████████████| 26790/26790 [1:31:28<00:00,  4.88it/s, Gen=26.710, Disc=0
+.325, Phase=non-contrast->arterial]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:20<00:00,  3.57it/s, L
+oss=0.5004, PSNR=9.03, SSIM=0.4749]
+2025-09-28 19:12:34,592 - INFO -
+Epoch 2/100 Summary:
+2025-09-28 19:12:34,592 - INFO -   Train - Total: 43.9789, Cycle: 3.3215, MSE: 32.7858, Focal: 7.8716
+2025-09-28 19:12:34,592 - INFO -   Disc: 0.3268
+2025-09-28 19:12:34,592 - INFO -   Val - Loss: 0.3959, PSNR: 10.85 dB, SSIM: 0.3823
+2025-09-28 19:12:34,592 - INFO - Saving sample patches for epoch 2...
+2025-09-28 19:12:42,226 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_2
+Epoch 3: 100%|███████████████████████████████████████████| 26790/26790 [1:31:39<00:00,  4.87it/s, Gen=11.223, Disc=0
+.325, Phase=non-contrast->arterial]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:06<00:00,  3.60it/s, L
+oss=0.4923, PSNR=9.10, SSIM=0.4993]
+2025-09-28 21:16:28,895 - INFO -
+Epoch 3/100 Summary:
+2025-09-28 21:16:28,895 - INFO -   Train - Total: 41.2159, Cycle: 3.2429, MSE: 30.5336, Focal: 7.4395
+2025-09-28 21:16:28,895 - INFO -   Disc: 0.3266
+2025-09-28 21:16:28,895 - INFO -   Val - Loss: 0.4021, PSNR: 10.78 dB, SSIM: 0.3911
+2025-09-28 21:16:28,895 - INFO - Saving sample patches for epoch 3...
+2025-09-28 21:16:37,027 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_3
+Epoch 4: 100%|█████████████████████████████████████████████| 26790/26790 [1:31:42<00:00,  4.87it/s, Gen=44.098, Disc
+=0.325, Phase=non-contrast->venous]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:06<00:00,  3.60it/s, L
+oss=0.4718, PSNR=9.28, SSIM=0.4907]
+2025-09-28 23:20:27,584 - INFO -
+Epoch 4/100 Summary:
+2025-09-28 23:20:27,584 - INFO -   Train - Total: 39.3776, Cycle: 3.1932, MSE: 28.9603, Focal: 7.2241
+2025-09-28 23:20:27,584 - INFO -   Disc: 0.3262
+2025-09-28 23:20:27,584 - INFO -   Val - Loss: 0.4065, PSNR: 10.72 dB, SSIM: 0.3906
+2025-09-28 23:20:27,584 - INFO - Saving sample patches for epoch 4...
+2025-09-28 23:20:35,446 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_4
+Epoch 5: 100%|█████████████████████████████████████████████| 26790/26790 [1:31:47<00:00,  4.86it/s, Gen=31.452, Disc
+=0.325, Phase=non-contrast->venous]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:23<00:00,  3.57it/s, L
+oss=0.5799, PSNR=8.39, SSIM=0.4363]
+2025-09-29 01:24:47,767 - INFO -
+Epoch 5/100 Summary:
+2025-09-29 01:24:47,767 - INFO -   Train - Total: 38.1609, Cycle: 3.1588, MSE: 27.8966, Focal: 7.1055
+2025-09-29 01:24:47,767 - INFO -   Disc: 0.3260
+2025-09-29 01:24:47,767 - INFO -   Val - Loss: 0.4124, PSNR: 10.64 dB, SSIM: 0.3847
+2025-09-29 01:24:47,767 - INFO - Saving sample patches for epoch 5...
+2025-09-29 01:24:55,814 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_5
+Epoch 6: 100%|██████████████████████████████████████████████| 26790/26790 [1:31:17<00:00,  4.89it/s, Gen=8.832, Disc
+=0.325, Phase=non-contrast->venous]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:34<00:00,  3.55it/s, L
+oss=0.4845, PSNR=9.17, SSIM=0.4689]
+2025-09-29 03:28:48,947 - INFO -
+Epoch 6/100 Summary:
+2025-09-29 03:28:48,947 - INFO -   Train - Total: 37.3413, Cycle: 3.1316, MSE: 27.1683, Focal: 7.0415
+2025-09-29 03:28:48,947 - INFO -   Disc: 0.3258
+2025-09-29 03:28:48,947 - INFO -   Val - Loss: 0.4013, PSNR: 10.77 dB, SSIM: 0.3987
+2025-09-29 03:28:48,948 - INFO - Saving sample patches for epoch 6...
+2025-09-29 03:28:56,822 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_6
+Epoch 7: 100%|███████████████████████████████████████████| 26790/26790 [1:31:13<00:00,  4.89it/s, Gen=12.630, Disc=0
+.325, Phase=non-contrast->arterial]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:10<00:00,  3.59it/s, L
+oss=0.5680, PSNR=8.48, SSIM=0.4650]
+2025-09-29 05:32:22,223 - INFO -
+Epoch 7/100 Summary:
+2025-09-29 05:32:22,223 - INFO -   Train - Total: 36.7541, Cycle: 3.1117, MSE: 26.6391, Focal: 7.0034
+2025-09-29 05:32:22,223 - INFO -   Disc: 0.3258
+2025-09-29 05:32:22,223 - INFO -   Val - Loss: 0.4140, PSNR: 10.63 dB, SSIM: 0.3882
+2025-09-29 05:32:22,223 - INFO - Saving sample patches for epoch 7...
+2025-09-29 05:32:30,447 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_7
+Epoch 8: 100%|█████████████████████████████████████████████| 26790/26790 [1:31:46<00:00,  4.86it/s, Gen=15.156, Disc
+=0.325, Phase=non-contrast->venous]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:21<00:00,  3.57it/s, L
+oss=0.5597, PSNR=8.54, SSIM=0.4605]
+2025-09-29 07:36:40,112 - INFO -
+Epoch 8/100 Summary:
+2025-09-29 07:36:40,112 - INFO -   Train - Total: 36.3109, Cycle: 3.0961, MSE: 26.2370, Focal: 6.9778
+2025-09-29 07:36:40,112 - INFO -   Disc: 0.3256
+2025-09-29 07:36:40,112 - INFO -   Val - Loss: 0.4118, PSNR: 10.65 dB, SSIM: 0.3899
+2025-09-29 07:36:40,112 - INFO - Saving sample patches for epoch 8...
+2025-09-29 07:36:48,063 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_8
+Epoch 9: 100%|██████████████████████████████████████████████| 26790/26790 [1:31:45<00:00,  4.87it/s, Gen=7.526, Disc
+=0.325, Phase=non-contrast->venous]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:30<00:00,  3.55it/s, L
+oss=0.5574, PSNR=8.56, SSIM=0.4625]
+2025-09-29 09:41:05,348 - INFO -
+Epoch 9/100 Summary:
+2025-09-29 09:41:05,348 - INFO -   Train - Total: 35.9635, Cycle: 3.0834, MSE: 25.9205, Focal: 6.9596
+2025-09-29 09:41:05,348 - INFO -   Disc: 0.3257
+2025-09-29 09:41:05,348 - INFO -   Val - Loss: 0.4138, PSNR: 10.62 dB, SSIM: 0.3929
+2025-09-29 09:41:05,348 - INFO - Saving sample patches for epoch 9...
+2025-09-29 09:41:13,458 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_9
+Epoch 10: 100%|██████████████████████████████████████████| 26790/26790 [1:31:53<00:00,  4.86it/s, Gen=47.204, Disc=0
+.325, Phase=non-contrast->arterial]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:35<00:00,  3.54it/s, L
+oss=0.5382, PSNR=8.71, SSIM=0.4567]
+2025-09-29 11:45:43,141 - INFO -
+Epoch 10/100 Summary:
+2025-09-29 11:45:43,141 - INFO -   Train - Total: 35.6916, Cycle: 3.0729, MSE: 25.6713, Focal: 6.9474
+2025-09-29 11:45:43,141 - INFO -   Disc: 0.3255
+2025-09-29 11:45:43,141 - INFO -   Val - Loss: 0.4118, PSNR: 10.65 dB, SSIM: 0.3946
+2025-09-29 11:45:43,141 - INFO - Saving sample patches for epoch 10...
+2025-09-29 11:45:51,008 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_10
+Epoch 11: 100%|████████████████████████████████████████████| 26790/26790 [1:31:38<00:00,  4.87it/s, Gen=15.889, Disc
+=0.325, Phase=non-contrast->venous]
+Validation: 100%|█████████████████████████████████████████████████████████████| 6930/6930 [32:15<00:00,  3.58it/s, L
+oss=0.5503, PSNR=8.61, SSIM=0.4632]
+2025-09-29 13:49:46,839 - INFO -
+Epoch 11/100 Summary:
+2025-09-29 13:49:46,840 - INFO -   Train - Total: 35.4698, Cycle: 3.0637, MSE: 25.4671, Focal: 6.9389
+2025-09-29 13:49:46,840 - INFO -   Disc: 0.3255
+2025-09-29 13:49:46,840 - INFO -   Val - Loss: 0.4149, PSNR: 10.62 dB, SSIM: 0.3929
+2025-09-29 13:49:46,840 - INFO - Saving sample patches for epoch 11...
+2025-09-29 13:49:54,920 - INFO - Saved 5 sample patches to ../ncct_cect/vindr_ds/loss_handled_training/samples/epoch
+_11
+Epoch 12: 100%|██████████████████████████████████████████| 26790/26790 [1:31:52<00:00,  4.86it/s, Gen=23.787, Disc=0
+.325, Phase=non-contrast->arterial]
+Validation:   3%|█▊                                                           | 202/6930 [00:57<32:23,  3.46it/s, Lo
+ss=0.2231,Validation:   3%|█▊                                                           | 202/6930 [00:57<32:23,  3.
+46it/s, Loss=0.1636,Validation:   3%|█▊                                                           | 205/6930 [00:57<
+30:33,  3.67it/s, Loss=0.1636,Validation:   3%|█▊                                                           | 205/69
+30 [00:58<30:33,  3.67it/s, Loss=0.1866,Validation:   3%|█▊
+  | 206/6930 [00:58<32:05,  3.49it/s, Loss=0.1866,Validation:   3%|█▊
+            | 206/6930 [00:58<32:05,  3.49it/s, Loss=0.1023,Validation:   3%|█▊
+                      | 206/6930 [00:58<32:05,  3.49it/s, Loss=0.1933,Validation:   3%|█▊
+                                | 206/6930 [00:59<32:05,  3.49it/s, Loss=0.3940,Validation:   3%|█▊
+                                          | 209/6930 [00:59<30:31,  3.67it/s, Loss=0.3940,Validation:   3%|█▊
+                                                     | 209/6930 [00:59<30:31,  3.67it/s, Loss=0.6841Validation:   3%
+|█▉                                                            | 210/6930 [00:59<32:41,  3.43it/s, Loss=0.6841Valida
+tion:   3%|█▊                                                           | 210/6930 [00:59<32:41,  3.43it/s, Loss=0.1
+540,Validation:   3%|█▊                                                           | 210/6930 [00:59<32:41,  3.43it/s
+, Loss=0.1812,Validation:   3%|█▊                                                           | 210/6930 [01:00<32:41,
+  3.43it/s, Loss=0.0774,Validation:   3%|█▊                                                           | 213/6930 [01
+:00<30:15,  3.70it/s, Loss=0.0774,Validation:   3%|█▊                                                           | 21
+3/6930 [01:00<30:15,  3.70it/s, Loss=0.0490,Validation:   3%|█▉
+      | 214/6930 [01:00<32:06,  3.49it/s, Loss=0.0490,Validation:   3%|█▉
+                | 214/6930 [01:00<32:06,  3.49it/s, Loss=0.1164,Validation:   3%|█▉
+                          | 214/6930 [01:00<32:06,  3.49it/s, Loss=0.2021,Validation:   3%|█▉
+                                     | 214/6930 [01:01<32:06,  3.49it/s, Loss=0.4724Validation:   3%|█▉
+                                               | 217/6930 [01:01<30:22,  3.68it/s, Loss=0.4724Validation:   3%|█▉
+                                                        | 217/6930 [01:01<30:22,  3.68it/s, Loss=0.2956,Validation:
+  3%|█▉                                                           | 218/6930 [01:01<32:08,  3.48it/s, Loss=0.2956,Va
+lidation:   3%|█▉                                                           | 218/6930 [01:01<32:08,  3.48it/s, Loss
+=0.3207,Validation:   3%|█▉                                                           | 218/6930 [01:01<32:08,  3.48
+it/s, Loss=0.2441,Validation:   3%|█▉                                                           | 218/6930 [01:02<32
+:08,  3.48it/s, Loss=0.1274,Validation:   3%|█▉                                                           | 221/6930
+ [01:02<30:17,  3.69it/s, Loss=0.1274,Validation:   3%|█▉
+| 221/6930 [01:02<30:17,  3.69it/s, Loss=0.2709,Validation:   3%|█▉
+          | 222/6930 [01:02<32:11,  3.47it/s, Loss=0.2709,Validation:   3%|█▉
+                     | 222/6930 [01:02<32:11,  3.47it/s, Loss=0.4044Validation:   3%|█▉
+                               | 222/6930 [01:02<32:11,  3.47it/s, Loss=0.8873Validation:   3%|█▉
+                                        | 222/6930 [01:03<32:11,  3.47it/s, Loss=0.2437,Validation:   3%|█▉
+                                                  | 225/6930 [01:03<30:24,  3.67it/s, Loss=0.2437,Validation:   3%|█
+▉                                                           | 225/6930 [01:03<30:24,  3.67it/s, Loss=0.1690,Validati
+on:   3%|█▉                                                           | 226/6930 [01:03<32:05,  3.48it/s, Loss=0.169
+0,Validation:   3%|█▉                                                           | 226/6930 [01:03<32:05,  3.48it/s,
+Loss=0.1915,Validation:   3%|█▉                                                           | 226/6930 [01:03<32:05,
+3.48it/s, Loss=0.1091,Validation:   3%|█▉                                                           | 226/6930 [01:0
+4<32:05,  3.48it/s, Loss=0.1987,Validation:   3%|██                                                           | 229/
+6930 [01:04<30:24,  3.67it/s, Loss=0.1987,Validation:   3%|██
+    | 229/6930 [01:04<30:24,  3.67it/s, Loss=0.3747,Validation:   3%|██
+              | 230/6930 [01:04<32:07,  3.48it/s, Loss=0.3747,Validation:   3%|██
+                         | 230/6930 [01:04<32:07,  3.48it/s, Loss=0.6492Validation:   3%|██
+                                  | 230/6930 [01:04<32:07,  3.48it/s, Loss=0.1590,Validation:   3%|██
+                                            | 230/6930 [01:05<32:07,  3.48it/s, Loss=0.1809,Validation:   3%|██
+                                                      | 233/6930 [01:05<30:34,  3.65it/s, Loss=0.1809,Validation:
+3%|██                                                           | 233/6930 [01:06<30:34,  3.65it/s, Loss=0.0729,Vali
+dation:   3%|██                                                           | 234/6930 [01:06<31:59,  3.49it/s, Loss=0
+.0729,Validation:   3%|██                                                           | 234/6930 [01:06<31:59,  3.49it
+/s, Loss=0.0519,Validation:   3%|██                                                           | 234/6930 [01:06<31:5
+9,  3.49it/s, Loss=0.1197,Validation:   3%|██                                                           | 234/6930 [
+01:06<31:59,  3.49it/s, Loss=0.1996,Validation:   3%|██                                                           |
+237/6930 [01:06<30:28,  3.66it/s, Loss=0.1996,Validation:   3%|██
+         | 237/6930 [01:07<30:28,  3.66it/s, Loss=0.4663Validation:   3%|██▏
+                   | 238/6930 [01:07<31:59,  3.49it/s, Loss=0.4663Validation:   3%|██
+                            | 238/6930 [01:07<31:59,  3.49it/s, Loss=0.3179,Validation:   3%|██
+                                      | 238/6930 [01:07<31:59,  3.49it/s, Loss=0.3261,Validation:   3%|██
+                                                | 240/6930 [01:07<31:19,  3.56it/s, Loss=0.3261, PSNR=10.89, SSIM=0.
+5232]
+
+⚠ Training interrupted by user
+(monai10_env) saeedeh_danaei@ai:/media/disk1/saeedeh_danaei/cycled_generator$ python train/dataloader_train.py

@@ -35,12 +35,454 @@ logger = logging.getLogger(__name__)
 # DATASET
 # ============================================================================
 
+# class CTPhaseDataset(Dataset):
+#     """
+#     Optimized dataset for CT phase generation with center-focused patching.
+    
+#     Extracts patches centered around the body region (image center) rather than
+#     starting from (0,0), ensuring better coverage of anatomical structures.
+#     """
+    
+#     def __init__(
+#         self,
+#         data_pairs: List[Dict],
+#         patch_size: Tuple[int, int] = (64, 64),
+#         patch_depth: int = 7,
+#         overlap_ratio: float = 0.5,
+#         augment: bool = True,
+#         body_focused: bool = False,  # New parameter
+#         body_threshold: float = -500.0  # HU threshold for body detection
+#     ):
+#         self.data_pairs = data_pairs
+#         self.patch_size = patch_size
+#         self.patch_depth = patch_depth
+#         self.overlap_ratio = overlap_ratio
+#         self.augment = augment
+#         self.body_focused = body_focused
+#         self.body_threshold = body_threshold
+#         self.patch_coords = []
+        
+#         # Phase mapping
+#         self.phase_to_idx = {
+#             'non-contrast': 0,
+#             'arterial': 1,
+#             'portal': 2,
+#             'venous': 2,  # Map venous to portal
+#             'delayed': 3
+#         }
+        
+#         logger.info(f"Initializing dataset with {len(data_pairs)} pairs")
+#         logger.info(f"Patch size: {patch_size}, Depth: {patch_depth}, Overlap: {overlap_ratio}")
+#         logger.info(f"Body-focused patching: {body_focused}")
+        
+#         self._compute_patch_coordinates()
+#         logger.info(f"Generated {len(self.patch_coords)} total patches")
+    
+#     def _find_body_center(self, volume: np.ndarray) -> Tuple[int, int]:
+#         """
+#         Find the center of the body region by detecting non-air voxels.
+        
+#         Args:
+#             volume: 3D CT volume [D, H, W]
+            
+#         Returns:
+#             (center_y, center_x): Coordinates of body center
+#         """
+#         # Take middle slice for body detection
+#         mid_slice = volume[volume.shape[2] // 2]
+        
+#         # # Threshold to find body (HU > -500 for soft tissue)
+#         # body_mask = mid_slice > self.body_threshold
+        
+#         # # Find bounding box of body region
+#         # if body_mask.sum() > 0:
+#         #     y_indices, x_indices = np.where(body_mask)
+            
+#         #     # Calculate center of mass of body region
+#         #     center_y = int(np.mean(y_indices))
+#         #     center_x = int(np.mean(x_indices))
+            
+#         #     logger.debug(f"Body center detected at: ({center_y}, {center_x})")
+#         # else:
+#         # Fallback to image center if no body detected
+#         center_y = volume.shape[0] // 2
+#         center_x = volume.shape[1] // 2
+#         logger.debug(f"Using image center: ({center_y}, {center_x})")
+        
+#         return center_y, center_x
+    
+#     def _compute_patch_coordinates(self):
+#         """
+#         Pre-compute centered patch coordinates focusing on body region.
+        
+#         Patches are generated centered around the body (image center),
+#         expanding outward with specified overlap ratio.
+#         """
+#         padding = self.patch_depth // 2
+        
+#         for pair_idx, pair_data in enumerate(self.data_pairs):
+#             try:
+#                 # Load volumes to get dimensions
+#                 source_vol = nib.load(pair_data['source_path']).get_fdata()
+#                 target_vol = nib.load(pair_data['target_path']).get_fdata()
+                
+#                 # Validate shapes match
+#                 if source_vol.shape != target_vol.shape:
+#                     logger.warning(f"Shape mismatch for pair {pair_idx}, skipping")
+#                     continue
+                
+#                 height, width, depth = source_vol.shape
+                
+#                 # Check minimum requirements
+#                 print(f"{depth} & {self.patch_depth}")
+
+#                 if depth < self.patch_depth + 2:
+#                     logger.warning(f"Insufficient depth ({depth}) for pair {pair_idx}, skipping")
+#                     continue
+                
+#                 if height < self.patch_size[0] or width < self.patch_size[1]:
+#                     logger.warning(f"Insufficient spatial size for pair {pair_idx}, skipping")
+#                     continue
+                
+#                 # Find center of body region
+#                 if self.body_focused:
+#                     center_y, center_x = self._find_body_center(source_vol)
+#                 else:
+#                     center_y = height // 2
+#                     center_x = width // 2
+                
+#                 # Calculate step sizes for overlap
+#                 step_y = max(1, int(self.patch_size[0] * (1 - self.overlap_ratio)))
+#                 step_x = max(1, int(self.patch_size[1] * (1 - self.overlap_ratio)))
+                
+#                 # Generate Y coordinates centered around body center
+#                 y_coords = self._generate_centered_coordinates(
+#                     center=center_y,
+#                     patch_size=self.patch_size[0],
+#                     volume_size=height,
+#                     step=step_y
+#                 )
+                
+#                 # Generate X coordinates centered around body center
+#                 x_coords = self._generate_centered_coordinates(
+#                     center=center_x,
+#                     patch_size=self.patch_size[1],
+#                     volume_size=width,
+#                     step=step_x
+#                 )
+                
+#                 # Generate Z coordinates (all valid slices)
+#                 z_range = range(padding, depth - padding)
+                
+#                 # Store all centered patch coordinates
+#                 patch_count = 0
+#                 for center_z in z_range:
+#                     for y_start in y_coords:
+#                         for x_start in x_coords:
+#                             self.patch_coords.append((pair_idx, center_z, y_start, x_start))
+#                             patch_count += 1
+                
+#                 logger.info(f"Pair {pair_idx}: Generated {patch_count} centered patches")
+#                 logger.info(f"  Body center: ({center_y}, {center_x})")
+#                 logger.info(f"  Spatial coverage: {len(y_coords)}(Y) x {len(x_coords)}(X) patches")
+                
+#             except Exception as e:
+#                 logger.error(f"Error processing pair {pair_idx}: {e}")
+#                 continue
+    
+#     def _generate_centered_coordinates(
+#         self, 
+#         center: int, 
+#         patch_size: int, 
+#         volume_size: int, 
+#         step: int
+#     ) -> List[int]:
+#         """
+#         Generate patch coordinates centered around a point.
+        
+#         Args:
+#             center: Center coordinate of body region
+#             patch_size: Size of patch in this dimension
+#             volume_size: Total size of volume in this dimension
+#             step: Step size between patches
+            
+#         Returns:
+#             List of start coordinates for patches
+#         """
+#         coords = []
+#         half_patch = patch_size // 2
+        
+#         # Start with center patch
+#         center_start = max(0, min(center - half_patch, volume_size - patch_size))
+#         coords.append(center_start)
+        
+#         # Expand symmetrically from center
+#         offset = step
+#         while True:
+#             # Try to add patch above/left
+#             coord_before = center_start - offset
+#             # Try to add patch below/right
+#             coord_after = center_start + offset
+            
+#             added = False
+            
+#             # Add before if valid
+#             if coord_before >= 0 and coord_before + patch_size <= volume_size:
+#                 coords.insert(0, coord_before)
+#                 added = True
+            
+#             # Add after if valid
+#             if coord_after >= 0 and coord_after + patch_size <= volume_size:
+#                 coords.append(coord_after)
+#                 added = True
+            
+#             # Stop if we can't add any more patches
+#             if not added:
+#                 break
+            
+#             offset += step
+        
+#         return coords
+    
+#     def _normalize_intensity(self, image: np.ndarray) -> np.ndarray:
+#         """Normalize CT intensity values."""
+#         # Clip to abdomen HU range
+#         image = np.clip(image, -100, 300)
+        
+#         # Z-score normalization
+#         mean_val = np.mean(image)
+#         std_val = np.std(image)
+#         if std_val > 1e-6:
+#             image = (image - mean_val) / std_val
+        
+#         return image.astype(np.float32)
+    
+#     def _extract_organ_masks(
+#         self, 
+#         seg_volume: np.ndarray, 
+#         z_start: int, 
+#         z_end: int,
+#         y_start: int, 
+#         y_end: int, 
+#         x_start: int, 
+#         x_end: int
+#     ) -> Dict[str, np.ndarray]:
+#         """Extract organ masks from segmentation volume."""
+#         patch_seg = seg_volume[z_start:z_end, y_start:y_end, x_start:x_end]
+        
+#         # Define organ labels (adjust based on your segmentation)
+#         organ_labels = {
+#             'liver': [1, 2],
+#             'kidney_right': [3],
+#             'kidney_left': [4],
+#             'spleen': [5],
+#             'pancreas': [6],
+#         }
+        
+#         masks = {}
+#         for organ, labels in organ_labels.items():
+#             mask = np.zeros_like(patch_seg, dtype=np.float32)
+#             for label in labels:
+#                 mask[patch_seg == label] = 1.0
+#             masks[organ] = mask
+        
+#         return masks
+    
+#     def _extract_organ_masks_from_patch(self, patch_seg: np.ndarray) -> Dict[str, np.ndarray]:
+#         """Extract organ masks from a segmentation patch."""
+#         # Define organ labels (adjust based on your segmentation)
+#         organ_labels = {
+#             'liver': [1, 2],
+#             'kidney_right': [3],
+#             'kidney_left': [4],
+#             'spleen': [5],
+#             'pancreas': [6],
+#         }
+        
+#         masks = {}
+#         for organ, labels in organ_labels.items():
+#             mask = np.zeros_like(patch_seg, dtype=np.float32)
+#             for label in labels:
+#                 mask[patch_seg == label] = 1.0
+#             masks[organ] = mask
+        
+#         return masks
+    
+#     def _augment(self, source, target, masks):
+#         """Apply 3D augmentations."""
+#         # Random horizontal flip
+#         if np.random.random() > 0.5:
+#             source = np.flip(source, axis=2).copy()
+#             target = np.flip(target, axis=2).copy()
+#             masks = {k: np.flip(v, axis=2).copy() for k, v in masks.items()}
+        
+#         # Random vertical flip
+#         if np.random.random() > 0.5:
+#             source = np.flip(source, axis=1).copy()
+#             target = np.flip(target, axis=1).copy()
+#             masks = {k: np.flip(v, axis=1).copy() for k, v in masks.items()}
+        
+#         # Random 90-degree rotations (in axial plane)
+#         if np.random.random() > 0.5:
+#             k = np.random.randint(1, 4)  # 1, 2, or 3 rotations
+#             source = np.rot90(source, k=k, axes=(1, 2)).copy()
+#             target = np.rot90(target, k=k, axes=(1, 2)).copy()
+#             masks = {organ: np.rot90(mask, k=k, axes=(1, 2)).copy() 
+#                     for organ, mask in masks.items()}
+        
+#         return source, target, masks
+    
+#     def __len__(self) -> int:
+#         return len(self.patch_coords)
+    
+#     def __getitem__(self, idx: int) -> Dict:
+#         pair_idx, center_z, y_start, x_start = self.patch_coords[idx]
+#         pair_data = self.data_pairs[pair_idx]
+        
+#         try:
+#             # Load volumes
+#             source_vol = nib.load(pair_data['source_path']).get_fdata()
+#             target_vol = nib.load(pair_data['target_path']).get_fdata()
+            
+#             # Normalize
+#             source_vol = self._normalize_intensity(source_vol)
+#             target_vol = self._normalize_intensity(target_vol)
+            
+#             # Extract centered patch with guaranteed consistent size
+#             height, width, depth = source_vol.shape
+#             expected_shape = (self.patch_depth, self.patch_size[0], self.patch_size[1])
+            
+#             # Calculate patch boundaries
+#             padding = self.patch_depth // 2
+#             z_start = center_z - padding
+#             z_end = center_z + padding + 1
+#             y_end = y_start + self.patch_size[0]
+#             x_end = x_start + self.patch_size[1]
+            
+#             # Ensure we don't go out of bounds
+#             z_start = max(0, z_start)
+#             z_end = min(depth, z_end)
+#             y_start = max(0, y_start)
+#             y_end = min(height, y_end)
+#             x_start = max(0, x_start)
+#             x_end = min(width, x_end)
+            
+#             # Extract patches
+#             source_patch = source_vol[z_start:z_end, y_start:y_end, x_start:x_end]
+#             target_patch = target_vol[z_start:z_end, y_start:y_end, x_start:x_end]
+            
+#             # Always pad to ensure exact expected shape
+#             current_shape = source_patch.shape
+            
+#             # Calculate padding needed for each dimension
+#             pad_z = expected_shape[0] - current_shape[0]
+#             pad_y = expected_shape[1] - current_shape[1]
+#             pad_x = expected_shape[2] - current_shape[2]
+            
+#             # Pad symmetrically
+#             pad_z_before = pad_z // 2 if pad_z > 0 else 0
+#             pad_z_after = pad_z - pad_z_before if pad_z > 0 else 0
+#             pad_y_before = pad_y // 2 if pad_y > 0 else 0
+#             pad_y_after = pad_y - pad_y_before if pad_y > 0 else 0
+#             pad_x_before = pad_x // 2 if pad_x > 0 else 0
+#             pad_x_after = pad_x - pad_x_before if pad_x > 0 else 0
+            
+#             # Apply padding if needed
+#             if pad_z > 0 or pad_y > 0 or pad_x > 0:
+#                 source_patch = np.pad(source_patch, 
+#                                     ((pad_z_before, pad_z_after), 
+#                                      (pad_y_before, pad_y_after), 
+#                                      (pad_x_before, pad_x_after)), 
+#                                     mode='constant', constant_values=0)
+#                 target_patch = np.pad(target_patch, 
+#                                     ((pad_z_before, pad_z_after), 
+#                                      (pad_y_before, pad_y_after), 
+#                                      (pad_x_before, pad_x_after)), 
+#                                     mode='constant', constant_values=0)
+            
+#             # Verify final shape is exactly what we expect
+#             assert source_patch.shape == expected_shape, f"Expected {expected_shape}, got {source_patch.shape}"
+#             assert target_patch.shape == expected_shape, f"Expected {expected_shape}, got {target_patch.shape}"
+            
+#             # Verify patch is centered correctly
+#             # Center of patch should align with body center
+#             patch_center_y = y_start + self.patch_size[0] // 2
+#             patch_center_x = x_start + self.patch_size[1] // 2
+            
+#             # Extract organ masks if available
+#             masks = {}
+#             if pair_data.get('target_seg'):
+#                 try:
+#                     seg_vol = nib.load(pair_data['target_seg']).get_fdata()
+#                     mask_patch = seg_vol[z_start:z_end, y_start:y_end, x_start:x_end]
+                    
+#                     # Apply same padding to masks if needed
+#                     if mask_patch.shape != expected_shape:
+#                         mask_patch = np.pad(mask_patch, 
+#                                           ((pad_z_before, pad_z_after), 
+#                                            (pad_y_before, pad_y_after), 
+#                                            (pad_x_before, pad_x_after)), 
+#                                           mode='constant', constant_values=0)
+                    
+#                     masks = self._extract_organ_masks_from_patch(mask_patch)
+#                 except Exception as e:
+#                     logger.debug(f"Could not load masks: {e}")
+            
+#             # Augmentation
+#             if self.augment:
+#                 source_patch, target_patch, masks = self._augment(
+#                     source_patch, target_patch, masks
+#                 )
+            
+#             # Convert to tensors
+#             source_tensor = torch.from_numpy(source_patch).unsqueeze(0).float()
+#             target_tensor = torch.from_numpy(target_patch).unsqueeze(0).float()
+            
+#             mask_tensors = {
+#                 organ: torch.from_numpy(mask).unsqueeze(0).float() 
+#                 for organ, mask in masks.items()
+#             }
+            
+#             # Get phase information
+#             source_phase = pair_data['source_phase']
+#             target_phase = pair_data['target_phase']
+            
+#             return {
+#                 'source': source_tensor,
+#                 'target': target_tensor,
+#                 'source_phase': source_phase,
+#                 'target_phase': target_phase,
+#                 'source_phase_idx': self.phase_to_idx.get(source_phase, 0),
+#                 'target_phase_idx': self.phase_to_idx.get(target_phase, 1),
+#                 'masks': mask_tensors,
+#                 'case_id': pair_data['case_id'],
+#                 'patch_center': (patch_center_y, patch_center_x)  # For debugging
+#             }
+            
+#         except Exception as e:
+#             logger.error(f"Error loading patch {idx}: {e}")
+#             # Return dummy data
+#             return {
+#                 'source': torch.zeros(1, self.patch_depth, *self.patch_size),
+#                 'target': torch.zeros(1, self.patch_depth, *self.patch_size),
+#                 'source_phase': 'error',
+#                 'target_phase': 'error',
+#                 'source_phase_idx': 0,
+#                 'target_phase_idx': 1,
+#                 'masks': {},
+#                 'case_id': 'error',
+#                 'patch_center': (0, 0)
+#             }
+
+
+
+
 class CTPhaseDataset(Dataset):
     """
     Optimized dataset for CT phase generation with center-focused patching.
     
-    Extracts patches centered around the body region (image center) rather than
-    starting from (0,0), ensuring better coverage of anatomical structures.
+    IMPORTANT: Volumes are in (width, height, depth) format from nibabel.
+    We convert to (depth, height, width) for processing.
     """
     
     def __init__(
@@ -50,12 +492,12 @@ class CTPhaseDataset(Dataset):
         patch_depth: int = 7,
         overlap_ratio: float = 0.5,
         augment: bool = True,
-        body_focused: bool = True,  # New parameter
-        body_threshold: float = -500.0  # HU threshold for body detection
+        body_focused: bool = True,
+        body_threshold: float = -500.0
     ):
         self.data_pairs = data_pairs
-        self.patch_size = patch_size
-        self.patch_depth = patch_depth
+        self.patch_size = patch_size  # (H, W) for axial patches
+        self.patch_depth = patch_depth  # Number of slices
         self.overlap_ratio = overlap_ratio
         self.augment = augment
         self.body_focused = body_focused
@@ -67,7 +509,7 @@ class CTPhaseDataset(Dataset):
             'non-contrast': 0,
             'arterial': 1,
             'portal': 2,
-            'venous': 2,  # Map venous to portal
+            'venous': 2,
             'delayed': 3
         }
         
@@ -80,49 +522,33 @@ class CTPhaseDataset(Dataset):
     
     def _find_body_center(self, volume: np.ndarray) -> Tuple[int, int]:
         """
-        Find the center of the body region by detecting non-air voxels.
+        Find the center of the body region.
         
         Args:
-            volume: 3D CT volume [D, H, W]
+            volume: 3D CT volume [D, H, W] (after transposition)
             
         Returns:
-            (center_y, center_x): Coordinates of body center
+            (center_y, center_x): Coordinates of body center in axial plane
         """
-        # Take middle slice for body detection
-        mid_slice = volume[volume.shape[2] // 2]
+        # Use image center as default
+        height, width = volume.shape[1], volume.shape[2]
+        center_y = height // 2
+        center_x = width // 2
         
-        # # Threshold to find body (HU > -500 for soft tissue)
-        # body_mask = mid_slice > self.body_threshold
-        
-        # # Find bounding box of body region
-        # if body_mask.sum() > 0:
-        #     y_indices, x_indices = np.where(body_mask)
-            
-        #     # Calculate center of mass of body region
-        #     center_y = int(np.mean(y_indices))
-        #     center_x = int(np.mean(x_indices))
-            
-        #     logger.debug(f"Body center detected at: ({center_y}, {center_x})")
-        # else:
-        # Fallback to image center if no body detected
-        center_y = volume.shape[0] // 2
-        center_x = volume.shape[1] // 2
         logger.debug(f"Using image center: ({center_y}, {center_x})")
-        
         return center_y, center_x
     
     def _compute_patch_coordinates(self):
         """
-        Pre-compute centered patch coordinates focusing on body region.
+        Pre-compute centered patch coordinates.
         
-        Patches are generated centered around the body (image center),
-        expanding outward with specified overlap ratio.
+        Handles volume shape conversion: (W, H, D) -> (D, H, W)
         """
         padding = self.patch_depth // 2
         
         for pair_idx, pair_data in enumerate(self.data_pairs):
             try:
-                # Load volumes to get dimensions
+                # Load volumes - shape is (W, H, D) from nibabel
                 source_vol = nib.load(pair_data['source_path']).get_fdata()
                 target_vol = nib.load(pair_data['target_path']).get_fdata()
                 
@@ -131,46 +557,56 @@ class CTPhaseDataset(Dataset):
                     logger.warning(f"Shape mismatch for pair {pair_idx}, skipping")
                     continue
                 
-                depth, height, width = source_vol.shape
+                # Get dimensions: nibabel gives (W, H, D)
+                width, height, depth = source_vol.shape
+                
+                logger.info(f"Pair {pair_idx}: Original shape (W, H, D) = {source_vol.shape}")
+                
+                # Transpose to (D, H, W) for processing
+                source_vol = np.transpose(source_vol, (2, 1, 0))  # (W,H,D) -> (D,H,W)
+                target_vol = np.transpose(target_vol, (2, 1, 0))
+                
+                depth_new, height_new, width_new = source_vol.shape
+                logger.info(f"  After transpose (D, H, W) = {source_vol.shape}")
                 
                 # Check minimum requirements
-                if depth < self.patch_depth + 2:
-                    logger.warning(f"Insufficient depth ({depth}) for pair {pair_idx}, skipping")
+                if depth_new < self.patch_depth + 2:
+                    logger.warning(f"Insufficient depth ({depth_new}) for pair {pair_idx}, skipping")
                     continue
                 
-                if height < self.patch_size[0] or width < self.patch_size[1]:
+                if height_new < self.patch_size[0] or width_new < self.patch_size[1]:
                     logger.warning(f"Insufficient spatial size for pair {pair_idx}, skipping")
                     continue
                 
-                # Find center of body region
+                # Find center of body region (in axial plane)
                 if self.body_focused:
                     center_y, center_x = self._find_body_center(source_vol)
                 else:
-                    center_y = height // 2
-                    center_x = width // 2
+                    center_y = height_new // 2
+                    center_x = width_new // 2
                 
                 # Calculate step sizes for overlap
                 step_y = max(1, int(self.patch_size[0] * (1 - self.overlap_ratio)))
                 step_x = max(1, int(self.patch_size[1] * (1 - self.overlap_ratio)))
                 
-                # Generate Y coordinates centered around body center
+                # Generate Y coordinates (height dimension)
                 y_coords = self._generate_centered_coordinates(
                     center=center_y,
                     patch_size=self.patch_size[0],
-                    volume_size=height,
+                    volume_size=height_new,
                     step=step_y
                 )
                 
-                # Generate X coordinates centered around body center
+                # Generate X coordinates (width dimension)
                 x_coords = self._generate_centered_coordinates(
                     center=center_x,
                     patch_size=self.patch_size[1],
-                    volume_size=width,
+                    volume_size=width_new,
                     step=step_x
                 )
                 
-                # Generate Z coordinates (all valid slices)
-                z_range = range(padding, depth - padding)
+                # Generate Z coordinates (depth/slice dimension)
+                z_range = range(padding, depth_new - padding)
                 
                 # Store all centered patch coordinates
                 patch_count = 0
@@ -180,12 +616,14 @@ class CTPhaseDataset(Dataset):
                             self.patch_coords.append((pair_idx, center_z, y_start, x_start))
                             patch_count += 1
                 
-                logger.info(f"Pair {pair_idx}: Generated {patch_count} centered patches")
+                logger.info(f"  Generated {patch_count} centered patches")
                 logger.info(f"  Body center: ({center_y}, {center_x})")
-                logger.info(f"  Spatial coverage: {len(y_coords)}(Y) x {len(x_coords)}(X) patches")
+                logger.info(f"  Spatial coverage: {len(y_coords)}(Y) x {len(x_coords)}(X) x {len(z_range)}(Z)")
                 
             except Exception as e:
                 logger.error(f"Error processing pair {pair_idx}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
     
     def _generate_centered_coordinates(
@@ -199,7 +637,7 @@ class CTPhaseDataset(Dataset):
         Generate patch coordinates centered around a point.
         
         Args:
-            center: Center coordinate of body region
+            center: Center coordinate
             patch_size: Size of patch in this dimension
             volume_size: Total size of volume in this dimension
             step: Step size between patches
@@ -217,24 +655,19 @@ class CTPhaseDataset(Dataset):
         # Expand symmetrically from center
         offset = step
         while True:
-            # Try to add patch above/left
             coord_before = center_start - offset
-            # Try to add patch below/right
             coord_after = center_start + offset
             
             added = False
             
-            # Add before if valid
             if coord_before >= 0 and coord_before + patch_size <= volume_size:
                 coords.insert(0, coord_before)
                 added = True
             
-            # Add after if valid
             if coord_after >= 0 and coord_after + patch_size <= volume_size:
                 coords.append(coord_after)
                 added = True
             
-            # Stop if we can't add any more patches
             if not added:
                 break
             
@@ -265,10 +698,17 @@ class CTPhaseDataset(Dataset):
         x_start: int, 
         x_end: int
     ) -> Dict[str, np.ndarray]:
-        """Extract organ masks from segmentation volume."""
+        """
+        Extract organ masks from segmentation volume.
+        
+        Args:
+            seg_volume: Segmentation [D, H, W]
+            z_start, z_end: Depth range
+            y_start, y_end: Height range
+            x_start, x_end: Width range
+        """
         patch_seg = seg_volume[z_start:z_end, y_start:y_end, x_start:x_end]
         
-        # Define organ labels (adjust based on your segmentation)
         organ_labels = {
             'liver': [1, 2],
             'kidney_right': [3],
@@ -287,22 +727,28 @@ class CTPhaseDataset(Dataset):
         return masks
     
     def _augment(self, source, target, masks):
-        """Apply 3D augmentations."""
-        # Random horizontal flip
+        """
+        Apply 3D augmentations.
+        
+        Args:
+            source, target: [D, H, W] arrays
+            masks: Dictionary of [D, H, W] mask arrays
+        """
+        # Random horizontal flip (flip width)
         if np.random.random() > 0.5:
             source = np.flip(source, axis=2).copy()
             target = np.flip(target, axis=2).copy()
             masks = {k: np.flip(v, axis=2).copy() for k, v in masks.items()}
         
-        # Random vertical flip
+        # Random vertical flip (flip height)
         if np.random.random() > 0.5:
             source = np.flip(source, axis=1).copy()
             target = np.flip(target, axis=1).copy()
             masks = {k: np.flip(v, axis=1).copy() for k, v in masks.items()}
         
-        # Random 90-degree rotations (in axial plane)
+        # Random 90-degree rotations (in axial plane: H-W)
         if np.random.random() > 0.5:
-            k = np.random.randint(1, 4)  # 1, 2, or 3 rotations
+            k = np.random.randint(1, 4)
             source = np.rot90(source, k=k, axes=(1, 2)).copy()
             target = np.rot90(target, k=k, axes=(1, 2)).copy()
             masks = {organ: np.rot90(mask, k=k, axes=(1, 2)).copy() 
@@ -314,30 +760,49 @@ class CTPhaseDataset(Dataset):
         return len(self.patch_coords)
     
     def __getitem__(self, idx: int) -> Dict:
+        """
+        Get a single patch.
+        
+        Returns:
+            Dictionary with:
+                - source: [1, D, H, W] tensor
+                - target: [1, D, H, W] tensor
+                - masks: {organ: [1, D, H, W] tensor}
+                - phase information
+        """
         pair_idx, center_z, y_start, x_start = self.patch_coords[idx]
         pair_data = self.data_pairs[pair_idx]
         
         try:
-            # Load volumes
+            # Load volumes - shape is (W, H, D) from nibabel
             source_vol = nib.load(pair_data['source_path']).get_fdata()
             target_vol = nib.load(pair_data['target_path']).get_fdata()
+            
+            # Transpose to (D, H, W) for processing
+            source_vol = np.transpose(source_vol, (2, 1, 0))
+            target_vol = np.transpose(target_vol, (2, 1, 0))
             
             # Normalize
             source_vol = self._normalize_intensity(source_vol)
             target_vol = self._normalize_intensity(target_vol)
             
-            # Extract centered patch
+            # Extract patch: [D, H, W]
             padding = self.patch_depth // 2
             z_start = center_z - padding
             z_end = center_z + padding + 1
             y_end = y_start + self.patch_size[0]
             x_end = x_start + self.patch_size[1]
             
+            # Extract patches
             source_patch = source_vol[z_start:z_end, y_start:y_end, x_start:x_end]
             target_patch = target_vol[z_start:z_end, y_start:y_end, x_start:x_end]
             
-            # Verify patch is centered correctly
-            # Center of patch should align with body center
+            # Verify shape
+            expected_shape = (self.patch_depth+1, self.patch_size[0], self.patch_size[1])
+            if source_patch.shape != expected_shape:
+                logger.warning(f"Patch shape mismatch: expected {expected_shape}, got {source_patch.shape}")
+            
+            # Calculate patch center for debugging
             patch_center_y = y_start + self.patch_size[0] // 2
             patch_center_x = x_start + self.patch_size[1] // 2
             
@@ -346,6 +811,8 @@ class CTPhaseDataset(Dataset):
             if pair_data.get('target_seg'):
                 try:
                     seg_vol = nib.load(pair_data['target_seg']).get_fdata()
+                    # Transpose segmentation too
+                    seg_vol = np.transpose(seg_vol, (2, 1, 0))
                     masks = self._extract_organ_masks(
                         seg_vol, z_start, z_end, y_start, y_end, x_start, x_end
                     )
@@ -358,7 +825,7 @@ class CTPhaseDataset(Dataset):
                     source_patch, target_patch, masks
                 )
             
-            # Convert to tensors
+            # Convert to tensors: [D, H, W] -> [1, D, H, W]
             source_tensor = torch.from_numpy(source_patch).unsqueeze(0).float()
             target_tensor = torch.from_numpy(target_patch).unsqueeze(0).float()
             
@@ -380,12 +847,15 @@ class CTPhaseDataset(Dataset):
                 'target_phase_idx': self.phase_to_idx.get(target_phase, 1),
                 'masks': mask_tensors,
                 'case_id': pair_data['case_id'],
-                'patch_center': (patch_center_y, patch_center_x)  # For debugging
+                'patch_center': (patch_center_y, patch_center_x)
             }
             
         except Exception as e:
             logger.error(f"Error loading patch {idx}: {e}")
-            # Return dummy data
+            import traceback
+            traceback.print_exc()
+            
+            # Return dummy data with correct shape
             return {
                 'source': torch.zeros(1, self.patch_depth, *self.patch_size),
                 'target': torch.zeros(1, self.patch_depth, *self.patch_size),
@@ -397,7 +867,6 @@ class CTPhaseDataset(Dataset):
                 'case_id': 'error',
                 'patch_center': (0, 0)
             }
-
 # ============================================================================
 # MODEL ARCHITECTURE
 # ============================================================================
@@ -499,11 +968,27 @@ class PhaseConditionedGenerator(nn.Module):
         shift = phase_params[:, 512:].view(batch_size, 512, 1, 1, 1)
         b = b * (1 + scale) + shift
         
-        # Decoder with skip connections
-        d4 = self.dec4(torch.cat([self.up4(b), e4], dim=1))
-        d3 = self.dec3(torch.cat([self.up3(d4), e3], dim=1))
-        d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
-        d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
+        # Decoder with skip connections - handle size mismatches
+        up4_out = self.up4(b)
+        # Ensure spatial dimensions match for skip connection
+        if up4_out.shape[2:] != e4.shape[2:]:
+            up4_out = F.interpolate(up4_out, size=e4.shape[2:], mode='trilinear', align_corners=False)
+        d4 = self.dec4(torch.cat([up4_out, e4], dim=1))
+        
+        up3_out = self.up3(d4)
+        if up3_out.shape[2:] != e3.shape[2:]:
+            up3_out = F.interpolate(up3_out, size=e3.shape[2:], mode='trilinear', align_corners=False)
+        d3 = self.dec3(torch.cat([up3_out, e3], dim=1))
+        
+        up2_out = self.up2(d3)
+        if up2_out.shape[2:] != e2.shape[2:]:
+            up2_out = F.interpolate(up2_out, size=e2.shape[2:], mode='trilinear', align_corners=False)
+        d2 = self.dec2(torch.cat([up2_out, e2], dim=1))
+        
+        up1_out = self.up1(d2)
+        if up1_out.shape[2:] != e1.shape[2:]:
+            up1_out = F.interpolate(up1_out, size=e1.shape[2:], mode='trilinear', align_corners=False)
+        d1 = self.dec1(torch.cat([up1_out, e1], dim=1))
         
         return self.output(d1)
 
@@ -514,38 +999,39 @@ class Discriminator3D(nn.Module):
     def __init__(self):
         super().__init__()
         
-        # Use spectral normalization for all conv layers to stabilize training
+        # Use smaller kernels and adaptive pooling for robustness
         self.model = nn.Sequential(
-            # Layer 1 - No normalization on first layer
+            # Layer 1 - Use smaller kernel
             nn.utils.spectral_norm(
-                nn.Conv3d(1, 64, (3, 4, 4), stride=(1, 2, 2), padding=(1, 1, 1))
+                nn.Conv3d(1, 64, (3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1))
             ),
             nn.LeakyReLU(0.2, inplace=True),
             
-            # Layer 2
+            # Layer 2 - Use smaller kernel
             nn.utils.spectral_norm(
-                nn.Conv3d(64, 128, (3, 4, 4), stride=(1, 2, 2), padding=(1, 1, 1))
+                nn.Conv3d(64, 128, (3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1))
             ),
             nn.InstanceNorm3d(128),
             nn.LeakyReLU(0.2, inplace=True),
             
-            # Layer 3
+            # Layer 3 - Use smaller kernel and stride
             nn.utils.spectral_norm(
-                nn.Conv3d(128, 256, (3, 4, 4), stride=(2, 2, 2), padding=(1, 1, 1))
+                nn.Conv3d(128, 256, (3, 3, 3), stride=(2, 2, 2), padding=(1, 1, 1))
             ),
             nn.InstanceNorm3d(256),
             nn.LeakyReLU(0.2, inplace=True),
             
-            # Layer 4 - Additional layer for more capacity
+            # Layer 4 - Use smaller kernel
             nn.utils.spectral_norm(
-                nn.Conv3d(256, 512, (3, 4, 4), stride=(2, 2, 2), padding=(1, 1, 1))
+                nn.Conv3d(256, 512, (3, 3, 3), stride=(2, 2, 2), padding=(1, 1, 1))
             ),
             nn.InstanceNorm3d(512),
             nn.LeakyReLU(0.2, inplace=True),
             
-            # Output
+            # Output - Use adaptive pooling to handle varying sizes
+            nn.AdaptiveAvgPool3d((1, 1, 1)),
             nn.utils.spectral_norm(
-                nn.Conv3d(512, 1, (2, 4, 4), stride=1, padding=0)
+                nn.Conv3d(512, 1, (1, 1, 1), stride=1, padding=0)
             )
         )
     
@@ -662,7 +1148,7 @@ def save_sample_patches(
                 batch_size = real_source.size(0)
                 for i in range(min(batch_size, num_samples - saved_count)):
                     # Get middle slice from 3D patch [1, D, H, W] -> [H, W]
-                    mid_slice = real_source.shape[2] // 2
+                    mid_slice = real_source.shape[1] // 2
                     
                     source_slice = real_source[i, 0, mid_slice].cpu().numpy()
                     target_slice = real_target[i, 0, mid_slice].cpu().numpy()
@@ -858,7 +1344,10 @@ class CombinedLoss(nn.Module):
 # ============================================================================
 # TRAINER
 # ============================================================================
-from loss_tracker import LossTracker
+try:
+    from .loss_tracker import LossTracker
+except ImportError:
+    from loss_tracker import LossTracker
 class CTPhaseTrainer:
     """Clean trainer for CT phase generation."""
     
