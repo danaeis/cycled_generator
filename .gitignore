@@ -3,4 +3,6 @@ __pycache__/*
 *.pt
 *.pth
 *.ts
+*.db
 
+debug*/

@@ -668,16 +668,26 @@ def run_full_training():
     
     # Configuration
     config = {
-        'data_dir': '../ncct_cect/vindr_ds/test_registered_cases',
+        'data_dir': '../ncct_cect/vindr_ds/registered_cases',
         'labels_csv': '../ncct_cect/vindr_ds/labels.csv',
-        'output_dir': '../ncct_cect/vindr_ds/test_cpatch96_training',
+        'output_dir': '../ncct_cect/vindr_ds/tuned_cpatch96_training',
         
         'patch_size': (96,128),
-        'patch_depth': 10,
+        'patch_depth': 11,
         'overlap_ratio': 0.5,
-        'disc_lr_multiplier':2.0,
 
-        'batch_size': 1,
+        'disc_lr_multiplier':1.599,
+        'lambda_cycle': 5.418,
+        'lambda_mse': 23.928,
+        'lambda_focal': 4.777,
+        'lambda_adv': 0.173,
+        # Training stability
+        'adv_warmup_epochs': 8,
+        'disc_updates_per_gen': 2,
+        'real_label_smoothing': 0.896,
+        'fake_label_smoothing': 0.118,
+
+        'batch_size': 8,
         'learning_rate': 2e-4,
         'epochs': 100,
         

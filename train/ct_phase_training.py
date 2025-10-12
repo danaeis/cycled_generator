@@ -567,7 +567,7 @@ class CTPhaseDataset(Dataset):
                 target_vol = np.transpose(target_vol, (2, 1, 0))
                 
                 depth_new, height_new, width_new = source_vol.shape
-                logger.info(f"  After transpose (D, H, W) = {source_vol.shape}")
+                # logger.info(f"  After transpose (D, H, W) = {source_vol.shape}")
                 
                 # Check minimum requirements
                 if depth_new < self.patch_depth + 2:
@@ -616,9 +616,9 @@ class CTPhaseDataset(Dataset):
                             self.patch_coords.append((pair_idx, center_z, y_start, x_start))
                             patch_count += 1
                 
-                logger.info(f"  Generated {patch_count} centered patches")
-                logger.info(f"  Body center: ({center_y}, {center_x})")
-                logger.info(f"  Spatial coverage: {len(y_coords)}(Y) x {len(x_coords)}(X) x {len(z_range)}(Z)")
+                # logger.info(f"  Generated {patch_count} centered patches")
+                # logger.info(f"  Body center: ({center_y}, {center_x})")
+                # logger.info(f"  Spatial coverage: {len(y_coords)}(Y) x {len(x_coords)}(X) x {len(z_range)}(Z)")
                 
             except Exception as e:
                 logger.error(f"Error processing pair {pair_idx}: {e}")
@@ -798,7 +798,7 @@ class CTPhaseDataset(Dataset):
             target_patch = target_vol[z_start:z_end, y_start:y_end, x_start:x_end]
             
             # Verify shape
-            expected_shape = (self.patch_depth+1, self.patch_size[0], self.patch_size[1])
+            expected_shape = (self.patch_depth, self.patch_size[0], self.patch_size[1])
             if source_patch.shape != expected_shape:
                 logger.warning(f"Patch shape mismatch: expected {expected_shape}, got {source_patch.shape}")
             
@@ -1125,12 +1125,14 @@ def save_sample_patches(
     save_dir.mkdir(parents=True, exist_ok=True)
     
     saved_count = 0
-    
+    counter = 0
     with torch.no_grad():
         for batch in val_loader:
+            counter += 1
             if saved_count >= num_samples:
                 break
-            
+            if counter%25 != 0:
+                continue
             try:
                 real_source = batch['source'].to(device)
                 real_target = batch['target'].to(device)
@@ -1755,7 +1757,7 @@ def main():
         'patch_depth': 7,
         'overlap_ratio': 0.75,
         
-        'batch_size': 4,
+        'batch_size': 2,
         'learning_rate': 2e-4,
         'epochs': 100,
         

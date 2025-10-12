@@ -276,7 +276,7 @@ def create_study(
     
     pruner = MedianPruner(
         n_startup_trials=5,   # Don't prune first 5 trials
-        n_warmup_steps=3,     # Don't prune first 3 epochs
+        n_warmup_steps=5,     # Don't prune first 3 epochs
         interval_steps=1      # Check every epoch
     )
     
@@ -314,23 +314,23 @@ def objective(
     config = base_config.copy()
     
     # Loss weights - log scale for wider range
-    config['lambda_cycle'] = trial.suggest_float('lambda_cycle', 1.0, 50.0, log=True)
-    config['lambda_mse'] = trial.suggest_float('lambda_mse', 10.0, 200.0, log=True)
-    config['lambda_focal'] = trial.suggest_float('lambda_focal', 0.5, 20.0, log=True)
-    config['lambda_adv'] = trial.suggest_float('lambda_adv', 0.1, 5.0, log=True)
+    config['lambda_cycle'] = trial.suggest_float('lambda_cycle', 3.0, 8.0, log=True)
+    config['lambda_mse'] = trial.suggest_float('lambda_mse', 15.0, 40.0, log=True)
+    config['lambda_focal'] = trial.suggest_float('lambda_focal', 2.0, 8.0, log=True)
+    config['lambda_adv'] = trial.suggest_float('lambda_adv', 0.08, 0.30, log=True)
     
     # Warmup epochs
-    config['adv_warmup_epochs'] = trial.suggest_int('adv_warmup_epochs', 3, 20)
+    config['adv_warmup_epochs'] = trial.suggest_int('adv_warmup_epochs', 5, 12)
     
     # Discriminator training frequency
     config['disc_updates_per_gen'] = trial.suggest_int('disc_updates_per_gen', 1, 4)
     
     # Label smoothing
     config['real_label_smoothing'] = trial.suggest_float('real_label_smoothing', 0.85, 0.95)
-    config['fake_label_smoothing'] = trial.suggest_float('fake_label_smoothing', 0.0, 0.15)
+    config['fake_label_smoothing'] = trial.suggest_float('fake_label_smoothing', 0.05, 0.15)
     
     # Discriminator learning rate multiplier
-    config['disc_lr_multiplier'] = trial.suggest_float('disc_lr_multiplier', 1.0, 4.0)
+    config['disc_lr_multiplier'] = trial.suggest_float('disc_lr_multiplier', 1.2, 2.2)
     
     logger.info(f"\nTrial {trial.number} hyperparameters:")
     logger.info(f"  lambda_cycle: {config['lambda_cycle']:.2f}")
@@ -781,15 +781,15 @@ def main():
     base_config = {
         'data_dir': '../ncct_cect/vindr_ds/registered_cases',
         'labels_csv': '../ncct_cect/vindr_ds/labels.csv',
-        'output_dir': '../ncct_cect/vindr_ds/optuna_tuning',
+        'output_dir': '../ncct_cect/vindr_ds/optuna_tuning_refined',
         
         'patch_size': (96, 128),
-        'patch_depth': 10,
+        'patch_depth': 11,
         'overlap_ratio': 0.5,
         
-        'batch_size': 16,
+        'batch_size': 8,
         'learning_rate': 2e-4,
-        'optuna_epochs': 15,  # Epochs per trial (keep low for faster tuning)
+        'optuna_epochs': 20,  # Epochs per trial (keep low for faster tuning)
         
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
     }
