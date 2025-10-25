@@ -251,6 +251,59 @@ class OptunaTrainer:
         return best_metrics
 
 
+def check_study_status(storage_path: str, study_name: str) -> Dict:
+    """
+    Check if a study exists and return information about it.
+    
+    Args:
+        storage_path: Path to SQLite database
+        study_name: Name of the study
+    
+    Returns:
+        Dictionary with study information or None if study doesn't exist
+    """
+    storage_path = Path(storage_path)
+    
+    if not storage_path.exists():
+        logger.info(f"No existing study found at {storage_path}")
+        return None
+    
+    try:
+        # Load the existing study to get information
+        study = optuna.load_study(
+            study_name=study_name,
+            storage=f'sqlite:///{storage_path}'
+        )
+        
+        # Get study statistics
+        completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+        pruned_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED]
+        failed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.FAIL]
+        
+        study_info = {
+            'exists': True,
+            'n_trials': len(study.trials),
+            'n_complete_trials': len(completed_trials),
+            'n_pruned_trials': len(pruned_trials),
+            'n_failed_trials': len(failed_trials),
+            'best_value': study.best_value if completed_trials else None,
+            'best_trial': study.best_trial.number if completed_trials else None,
+            'study': study
+        }
+        
+        logger.info(f"Found existing study '{study_name}' with {study_info['n_trials']} trials")
+        logger.info(f"  Completed: {study_info['n_complete_trials']}")
+        logger.info(f"  Pruned: {study_info['n_pruned_trials']}")
+        logger.info(f"  Failed: {study_info['n_failed_trials']}")
+        if study_info['best_value'] is not None:
+            logger.info(f"  Best validation loss: {study_info['best_value']:.6f}")
+        
+        return study_info
+        
+    except Exception as e:
+        logger.warning(f"Error loading existing study: {e}")
+        return None
+
 def create_study(
     study_name: str,
     storage_path: str,
@@ -279,6 +332,14 @@ def create_study(
         n_warmup_steps=5,     # Don't prune first 3 epochs
         interval_steps=1      # Check every epoch
     )
+    
+    # Check if study already exists
+    storage_path_obj = Path(storage_path)
+    if storage_path_obj.exists():
+        logger.info(f"Database file exists at {storage_path}")
+        logger.info(f"Loading existing study '{study_name}' and continuing optimization...")
+    else:
+        logger.info(f"Creating new study '{study_name}' at {storage_path}")
     
     study = optuna.create_study(
         study_name=study_name,
@@ -719,24 +780,41 @@ def run_optuna_optimization(
     logger.info(f"Train dataset: {len(train_dataset)} patches")
     logger.info(f"Val dataset: {len(val_dataset)} patches")
     
-    # Create study
+    # Check for existing study and create or load it
     storage_path = optuna_dir / 'optuna_study.db'
+    
+    # Check if study exists and get information
+    study_info = check_study_status(storage_path, study_name)
+    
+    # Create or load study
     study = create_study(
         study_name=study_name,
         storage_path=str(storage_path),
         direction='minimize'  # Minimize validation loss
     )
     
-    # Run optimization
-    logger.info(f"\nStarting Optuna optimization with {n_trials} trials...")
+    # Calculate remaining trials if study exists
+    remaining_trials = n_trials
+    if study_info is not None:
+        completed_trials = study_info['n_complete_trials']
+        remaining_trials = max(0, n_trials - completed_trials)
+        logger.info(f"\nResuming Optuna optimization with {remaining_trials} more trials...")
+        logger.info(f"Already completed {completed_trials} trials")
+    else:
+        logger.info(f"\nStarting new Optuna optimization with {n_trials} trials...")
+    
     logger.info(f"Results will be saved to: {optuna_dir}")
     
-    study.optimize(
-        lambda trial: objective(trial, train_loader, val_loader, base_config),
-        n_trials=n_trials,
-        show_progress_bar=True,
-        catch=(Exception,)  # Continue even if some trials fail
-    )
+    # Only run optimization if there are trials remaining
+    if remaining_trials > 0:
+        study.optimize(
+            lambda trial: objective(trial, train_loader, val_loader, base_config),
+            n_trials=remaining_trials,
+            show_progress_bar=True,
+            catch=(Exception,)  # Continue even if some trials fail
+        )
+    else:
+        logger.info("All requested trials have already been completed. Skipping optimization.")
     
     # Save results
     logger.info("\nOptimization complete! Saving results...")

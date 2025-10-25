@@ -12,10 +12,11 @@ from typing import Dict, List, Tuple
 import logging
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-
+import torch
+from torch.utils.data import DataLoader
+import re
 
 logger = logging.getLogger(__name__)
-
 
 def load_phase_mapping(labels_csv_path: str) -> Dict[str, Dict[str, str]]:
     """
@@ -41,7 +42,6 @@ def load_phase_mapping(labels_csv_path: str) -> Dict[str, Dict[str, str]]:
     
     return phase_mapping
 
-
 def infer_phase_from_filename(filename: str) -> str:
     """Infer CT phase from filename."""
     filename = filename.lower()
@@ -58,7 +58,6 @@ def infer_phase_from_filename(filename: str) -> str:
             return phase
     
     return 'unknown'
-
 
 def create_data_pairs(
     data_dir: str,
@@ -93,12 +92,12 @@ def create_data_pairs(
         cases[case_id] = {}
         
         # Find all registered image files
-        for nii_file in case_dir.glob("*_registered.nii.gz"):
+        for nii_file in case_dir.glob("*_deformable.nii.gz"):
             if "_seg" in str(nii_file):
                 continue  # Skip segmentation files
                 
             # Extract series ID and phase
-            filename = nii_file.stem.replace("_registered", "").replace(".nii", "")
+            filename = nii_file.stem.replace("_deformable", "").replace(".nii", "")
             parts = filename.split('_')
             
             if len(parts) >= 2:
@@ -116,7 +115,7 @@ def create_data_pairs(
                 }
                 
                 # Check for segmentation
-                seg_file = case_dir / f"{filename}_registered_seg.nii.gz"
+                seg_file = case_dir / f"{filename}_deformable_seg.nii.gz"
                 if seg_file.exists():
                     cases[case_id][phase]['segmentation'] = seg_file
     
@@ -179,7 +178,6 @@ def create_data_pairs(
     
     return splits
 
-
 # ============================================================================
 # DEBUGGING UTILITIES
 # ============================================================================
@@ -226,7 +224,6 @@ def debug_data_loading(config: Dict):
         traceback.print_exc()
         return None
 
-
 def debug_dataset(dataset, num_samples: int = 3):
     """Debug dataset by loading a few samples."""
     
@@ -256,7 +253,6 @@ def debug_dataset(dataset, num_samples: int = 3):
             print(f"✗ Error loading sample {i}: {e}")
             import traceback
             traceback.print_exc()
-
 
 def visualize_single_patch(
     sample: Dict,
@@ -382,7 +378,6 @@ def visualize_single_patch(
     plt.close()
     
     logger.info(f"Saved patch visualization to {save_path}")
-
 
 def debug_dataset_with_visualization(
     dataset, 
@@ -597,13 +592,8 @@ def create_patch_coverage_map(
     print(f"  Mean overlap: {coverage_map[coverage_map > 0].mean():.2f}x")
     print(f"  Coverage: {100 * (coverage_map > 0).sum() / coverage_map.size:.1f}%")
 
-
-
-
-
 def debug_model(config: Dict):
     """Debug model architecture."""
-    import torch
     from ct_phase_training import PhaseConditionedGenerator, Discriminator3D
     
     print("\n" + "=" * 80)
@@ -655,22 +645,19 @@ def debug_model(config: Dict):
         traceback.print_exc()
         return False
 
-
 # ============================================================================
 # COMPLETE TRAINING SCRIPT
 # ============================================================================
 
 def run_full_training():
-    """Complete training script with all debugging."""
-    import torch
-    from torch.utils.data import DataLoader
+    """Complete training script with all debugging and checkpoint resuming."""
     from ct_phase_training import CTPhaseDataset, CTPhaseTrainer
     
     # Configuration
     config = {
-        'data_dir': '../ncct_cect/vindr_ds/registered_cases',
+        'data_dir': '../ncct_cect/vindr_ds/deformable_registeredbspline',
         'labels_csv': '../ncct_cect/vindr_ds/labels.csv',
-        'output_dir': '../ncct_cect/vindr_ds/tuned_cpatch96_training',
+        'output_dir': '../ncct_cect/vindr_ds/test_mse0_cpatch96_bspline_training',
         
         'patch_size': (96,128),
         'patch_depth': 11,
@@ -678,7 +665,8 @@ def run_full_training():
 
         'disc_lr_multiplier':1.599,
         'lambda_cycle': 5.418,
-        'lambda_mse': 23.928,
+        # 'lambda_mse': 23.928,
+        'lambda_mse': 0,
         'lambda_focal': 4.777,
         'lambda_adv': 0.173,
         # Training stability
@@ -693,13 +681,43 @@ def run_full_training():
         
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         # Debug options
-        'debug_patches': True,
-        'debug_output_dir': './debug_patches'
+        'debug_patches': False,
+        'debug_output_dir': './debug_patches',
+        'keep_last_n_checkpoints': 3,  # Only keep last 3 checkpoints
+        'save_samples_interval': 1,     # Save samples every 5 epochs instead of 1
+        'keep_last_n_sample_epochs': 5, # Keep samples from last 5 epochs only
     }
     
     print("=" * 80)
     print("CT PHASE GENERATION - COMPLETE TRAINING PIPELINE")
     print("=" * 80)
+    
+    # Create output directory
+    output_dir = Path(config['output_dir'])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Check for existing checkpoints
+    start_epoch = 0
+    checkpoint_path = None
+    checkpoint_files = list(output_dir.glob('checkpoint_epoch_*.pth'))
+    
+    if checkpoint_files:
+        # Find the latest checkpoint based on epoch number
+        epoch_numbers = []
+        for ckpt in checkpoint_files:
+            match = re.search(r'checkpoint_epoch_(\d+)\.pth', ckpt.name)
+            if match:
+                epoch_numbers.append(int(match.group(1)))
+        
+        if epoch_numbers:
+            latest_epoch = max(epoch_numbers)
+            checkpoint_path = output_dir / f'checkpoint_epoch_{latest_epoch}.pth'
+            start_epoch = latest_epoch + 1
+            print(f"✓ Found checkpoint at epoch {latest_epoch}, resuming from epoch {start_epoch}")
+        else:
+            print("✓ No valid checkpoint files found, starting from scratch")
+    else:
+        print("✓ No checkpoint files found, starting from scratch")
     
     # Step 1: Debug data loading
     print("\nStep 1: Data Loading")
@@ -754,16 +772,15 @@ def run_full_training():
         print("  - patch_XXX_allslices_case_YYY.png: All depth slices")
         print("  - patch_coverage_case_X.png: Spatial coverage map")
         print("\n" + "=" * 80)
-    # debug_dataset(train_dataset, num_samples=2)
     
     # Step 4: Debug model
-    print("\nStep 3: Model Architecture")
-    if not debug_model(config):
-        print("✗ Model test failed. Exiting.")
-        return
+    # print("\nStep 4: Model Architecture")
+    # if not debug_model(config):
+    #     print("✗ Model test failed. Exiting.")
+    #     return
     
     # Step 5: Create dataloaders
-    print("\nStep 4: Creating DataLoaders")
+    print("\nStep 5: Creating DataLoaders")
     train_loader = DataLoader(
         train_dataset,
         batch_size=config['batch_size'],
@@ -785,26 +802,38 @@ def run_full_training():
     print(f"✓ Val loader: {len(val_loader)} batches")
     
     # Step 6: Initialize trainer
-    print("\nStep 5: Initializing Trainer")
+    print("\nStep 6: Initializing Trainer")
     trainer = CTPhaseTrainer(config)
     
+    # Load checkpoint if available
+    if checkpoint_path and start_epoch > 0:
+        try:
+            is_loaded = trainer.load_checkpoint(checkpoint_path)
+            if not is_loaded:
+                raise
+            print(f"✓ Successfully loaded checkpoint from {checkpoint_path}")
+        except Exception as e:
+            print(f"✗ Failed to load checkpoint: {e}, starting from scratch")
+            start_epoch = 0
+            trainer = CTPhaseTrainer(config)  # Re-initialize trainer if loading fails
+    
     # Step 7: Start training
-    print("\nStep 6: Starting Training")
+    print("\nStep 7: Starting Training")
     print("=" * 80)
     
     try:
-        trainer.train(train_loader, val_loader, config['epochs'])
+        trainer.train(train_loader, val_loader, config['epochs'], start_epoch=start_epoch)
         print("\n✓ Training completed successfully!")
         
     except KeyboardInterrupt:
         print("\n⚠ Training interrupted by user")
-        trainer.save_checkpoint(float('inf'), is_best=False)
+        trainer.save_checkpoint(start_epoch or float('inf'), is_best=False)
         
     except Exception as e:
         print(f"\n✗ Training failed: {e}")
         import traceback
         traceback.print_exc()
-
+        trainer.save_checkpoint(start_epoch or float('inf'), is_best=False)
 
 if __name__ == "__main__":
     run_full_training()

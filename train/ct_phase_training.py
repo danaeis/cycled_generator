@@ -35,447 +35,6 @@ logger = logging.getLogger(__name__)
 # DATASET
 # ============================================================================
 
-# class CTPhaseDataset(Dataset):
-#     """
-#     Optimized dataset for CT phase generation with center-focused patching.
-    
-#     Extracts patches centered around the body region (image center) rather than
-#     starting from (0,0), ensuring better coverage of anatomical structures.
-#     """
-    
-#     def __init__(
-#         self,
-#         data_pairs: List[Dict],
-#         patch_size: Tuple[int, int] = (64, 64),
-#         patch_depth: int = 7,
-#         overlap_ratio: float = 0.5,
-#         augment: bool = True,
-#         body_focused: bool = False,  # New parameter
-#         body_threshold: float = -500.0  # HU threshold for body detection
-#     ):
-#         self.data_pairs = data_pairs
-#         self.patch_size = patch_size
-#         self.patch_depth = patch_depth
-#         self.overlap_ratio = overlap_ratio
-#         self.augment = augment
-#         self.body_focused = body_focused
-#         self.body_threshold = body_threshold
-#         self.patch_coords = []
-        
-#         # Phase mapping
-#         self.phase_to_idx = {
-#             'non-contrast': 0,
-#             'arterial': 1,
-#             'portal': 2,
-#             'venous': 2,  # Map venous to portal
-#             'delayed': 3
-#         }
-        
-#         logger.info(f"Initializing dataset with {len(data_pairs)} pairs")
-#         logger.info(f"Patch size: {patch_size}, Depth: {patch_depth}, Overlap: {overlap_ratio}")
-#         logger.info(f"Body-focused patching: {body_focused}")
-        
-#         self._compute_patch_coordinates()
-#         logger.info(f"Generated {len(self.patch_coords)} total patches")
-    
-#     def _find_body_center(self, volume: np.ndarray) -> Tuple[int, int]:
-#         """
-#         Find the center of the body region by detecting non-air voxels.
-        
-#         Args:
-#             volume: 3D CT volume [D, H, W]
-            
-#         Returns:
-#             (center_y, center_x): Coordinates of body center
-#         """
-#         # Take middle slice for body detection
-#         mid_slice = volume[volume.shape[2] // 2]
-        
-#         # # Threshold to find body (HU > -500 for soft tissue)
-#         # body_mask = mid_slice > self.body_threshold
-        
-#         # # Find bounding box of body region
-#         # if body_mask.sum() > 0:
-#         #     y_indices, x_indices = np.where(body_mask)
-            
-#         #     # Calculate center of mass of body region
-#         #     center_y = int(np.mean(y_indices))
-#         #     center_x = int(np.mean(x_indices))
-            
-#         #     logger.debug(f"Body center detected at: ({center_y}, {center_x})")
-#         # else:
-#         # Fallback to image center if no body detected
-#         center_y = volume.shape[0] // 2
-#         center_x = volume.shape[1] // 2
-#         logger.debug(f"Using image center: ({center_y}, {center_x})")
-        
-#         return center_y, center_x
-    
-#     def _compute_patch_coordinates(self):
-#         """
-#         Pre-compute centered patch coordinates focusing on body region.
-        
-#         Patches are generated centered around the body (image center),
-#         expanding outward with specified overlap ratio.
-#         """
-#         padding = self.patch_depth // 2
-        
-#         for pair_idx, pair_data in enumerate(self.data_pairs):
-#             try:
-#                 # Load volumes to get dimensions
-#                 source_vol = nib.load(pair_data['source_path']).get_fdata()
-#                 target_vol = nib.load(pair_data['target_path']).get_fdata()
-                
-#                 # Validate shapes match
-#                 if source_vol.shape != target_vol.shape:
-#                     logger.warning(f"Shape mismatch for pair {pair_idx}, skipping")
-#                     continue
-                
-#                 height, width, depth = source_vol.shape
-                
-#                 # Check minimum requirements
-#                 print(f"{depth} & {self.patch_depth}")
-
-#                 if depth < self.patch_depth + 2:
-#                     logger.warning(f"Insufficient depth ({depth}) for pair {pair_idx}, skipping")
-#                     continue
-                
-#                 if height < self.patch_size[0] or width < self.patch_size[1]:
-#                     logger.warning(f"Insufficient spatial size for pair {pair_idx}, skipping")
-#                     continue
-                
-#                 # Find center of body region
-#                 if self.body_focused:
-#                     center_y, center_x = self._find_body_center(source_vol)
-#                 else:
-#                     center_y = height // 2
-#                     center_x = width // 2
-                
-#                 # Calculate step sizes for overlap
-#                 step_y = max(1, int(self.patch_size[0] * (1 - self.overlap_ratio)))
-#                 step_x = max(1, int(self.patch_size[1] * (1 - self.overlap_ratio)))
-                
-#                 # Generate Y coordinates centered around body center
-#                 y_coords = self._generate_centered_coordinates(
-#                     center=center_y,
-#                     patch_size=self.patch_size[0],
-#                     volume_size=height,
-#                     step=step_y
-#                 )
-                
-#                 # Generate X coordinates centered around body center
-#                 x_coords = self._generate_centered_coordinates(
-#                     center=center_x,
-#                     patch_size=self.patch_size[1],
-#                     volume_size=width,
-#                     step=step_x
-#                 )
-                
-#                 # Generate Z coordinates (all valid slices)
-#                 z_range = range(padding, depth - padding)
-                
-#                 # Store all centered patch coordinates
-#                 patch_count = 0
-#                 for center_z in z_range:
-#                     for y_start in y_coords:
-#                         for x_start in x_coords:
-#                             self.patch_coords.append((pair_idx, center_z, y_start, x_start))
-#                             patch_count += 1
-                
-#                 logger.info(f"Pair {pair_idx}: Generated {patch_count} centered patches")
-#                 logger.info(f"  Body center: ({center_y}, {center_x})")
-#                 logger.info(f"  Spatial coverage: {len(y_coords)}(Y) x {len(x_coords)}(X) patches")
-                
-#             except Exception as e:
-#                 logger.error(f"Error processing pair {pair_idx}: {e}")
-#                 continue
-    
-#     def _generate_centered_coordinates(
-#         self, 
-#         center: int, 
-#         patch_size: int, 
-#         volume_size: int, 
-#         step: int
-#     ) -> List[int]:
-#         """
-#         Generate patch coordinates centered around a point.
-        
-#         Args:
-#             center: Center coordinate of body region
-#             patch_size: Size of patch in this dimension
-#             volume_size: Total size of volume in this dimension
-#             step: Step size between patches
-            
-#         Returns:
-#             List of start coordinates for patches
-#         """
-#         coords = []
-#         half_patch = patch_size // 2
-        
-#         # Start with center patch
-#         center_start = max(0, min(center - half_patch, volume_size - patch_size))
-#         coords.append(center_start)
-        
-#         # Expand symmetrically from center
-#         offset = step
-#         while True:
-#             # Try to add patch above/left
-#             coord_before = center_start - offset
-#             # Try to add patch below/right
-#             coord_after = center_start + offset
-            
-#             added = False
-            
-#             # Add before if valid
-#             if coord_before >= 0 and coord_before + patch_size <= volume_size:
-#                 coords.insert(0, coord_before)
-#                 added = True
-            
-#             # Add after if valid
-#             if coord_after >= 0 and coord_after + patch_size <= volume_size:
-#                 coords.append(coord_after)
-#                 added = True
-            
-#             # Stop if we can't add any more patches
-#             if not added:
-#                 break
-            
-#             offset += step
-        
-#         return coords
-    
-#     def _normalize_intensity(self, image: np.ndarray) -> np.ndarray:
-#         """Normalize CT intensity values."""
-#         # Clip to abdomen HU range
-#         image = np.clip(image, -100, 300)
-        
-#         # Z-score normalization
-#         mean_val = np.mean(image)
-#         std_val = np.std(image)
-#         if std_val > 1e-6:
-#             image = (image - mean_val) / std_val
-        
-#         return image.astype(np.float32)
-    
-#     def _extract_organ_masks(
-#         self, 
-#         seg_volume: np.ndarray, 
-#         z_start: int, 
-#         z_end: int,
-#         y_start: int, 
-#         y_end: int, 
-#         x_start: int, 
-#         x_end: int
-#     ) -> Dict[str, np.ndarray]:
-#         """Extract organ masks from segmentation volume."""
-#         patch_seg = seg_volume[z_start:z_end, y_start:y_end, x_start:x_end]
-        
-#         # Define organ labels (adjust based on your segmentation)
-#         organ_labels = {
-#             'liver': [1, 2],
-#             'kidney_right': [3],
-#             'kidney_left': [4],
-#             'spleen': [5],
-#             'pancreas': [6],
-#         }
-        
-#         masks = {}
-#         for organ, labels in organ_labels.items():
-#             mask = np.zeros_like(patch_seg, dtype=np.float32)
-#             for label in labels:
-#                 mask[patch_seg == label] = 1.0
-#             masks[organ] = mask
-        
-#         return masks
-    
-#     def _extract_organ_masks_from_patch(self, patch_seg: np.ndarray) -> Dict[str, np.ndarray]:
-#         """Extract organ masks from a segmentation patch."""
-#         # Define organ labels (adjust based on your segmentation)
-#         organ_labels = {
-#             'liver': [1, 2],
-#             'kidney_right': [3],
-#             'kidney_left': [4],
-#             'spleen': [5],
-#             'pancreas': [6],
-#         }
-        
-#         masks = {}
-#         for organ, labels in organ_labels.items():
-#             mask = np.zeros_like(patch_seg, dtype=np.float32)
-#             for label in labels:
-#                 mask[patch_seg == label] = 1.0
-#             masks[organ] = mask
-        
-#         return masks
-    
-#     def _augment(self, source, target, masks):
-#         """Apply 3D augmentations."""
-#         # Random horizontal flip
-#         if np.random.random() > 0.5:
-#             source = np.flip(source, axis=2).copy()
-#             target = np.flip(target, axis=2).copy()
-#             masks = {k: np.flip(v, axis=2).copy() for k, v in masks.items()}
-        
-#         # Random vertical flip
-#         if np.random.random() > 0.5:
-#             source = np.flip(source, axis=1).copy()
-#             target = np.flip(target, axis=1).copy()
-#             masks = {k: np.flip(v, axis=1).copy() for k, v in masks.items()}
-        
-#         # Random 90-degree rotations (in axial plane)
-#         if np.random.random() > 0.5:
-#             k = np.random.randint(1, 4)  # 1, 2, or 3 rotations
-#             source = np.rot90(source, k=k, axes=(1, 2)).copy()
-#             target = np.rot90(target, k=k, axes=(1, 2)).copy()
-#             masks = {organ: np.rot90(mask, k=k, axes=(1, 2)).copy() 
-#                     for organ, mask in masks.items()}
-        
-#         return source, target, masks
-    
-#     def __len__(self) -> int:
-#         return len(self.patch_coords)
-    
-#     def __getitem__(self, idx: int) -> Dict:
-#         pair_idx, center_z, y_start, x_start = self.patch_coords[idx]
-#         pair_data = self.data_pairs[pair_idx]
-        
-#         try:
-#             # Load volumes
-#             source_vol = nib.load(pair_data['source_path']).get_fdata()
-#             target_vol = nib.load(pair_data['target_path']).get_fdata()
-            
-#             # Normalize
-#             source_vol = self._normalize_intensity(source_vol)
-#             target_vol = self._normalize_intensity(target_vol)
-            
-#             # Extract centered patch with guaranteed consistent size
-#             height, width, depth = source_vol.shape
-#             expected_shape = (self.patch_depth, self.patch_size[0], self.patch_size[1])
-            
-#             # Calculate patch boundaries
-#             padding = self.patch_depth // 2
-#             z_start = center_z - padding
-#             z_end = center_z + padding + 1
-#             y_end = y_start + self.patch_size[0]
-#             x_end = x_start + self.patch_size[1]
-            
-#             # Ensure we don't go out of bounds
-#             z_start = max(0, z_start)
-#             z_end = min(depth, z_end)
-#             y_start = max(0, y_start)
-#             y_end = min(height, y_end)
-#             x_start = max(0, x_start)
-#             x_end = min(width, x_end)
-            
-#             # Extract patches
-#             source_patch = source_vol[z_start:z_end, y_start:y_end, x_start:x_end]
-#             target_patch = target_vol[z_start:z_end, y_start:y_end, x_start:x_end]
-            
-#             # Always pad to ensure exact expected shape
-#             current_shape = source_patch.shape
-            
-#             # Calculate padding needed for each dimension
-#             pad_z = expected_shape[0] - current_shape[0]
-#             pad_y = expected_shape[1] - current_shape[1]
-#             pad_x = expected_shape[2] - current_shape[2]
-            
-#             # Pad symmetrically
-#             pad_z_before = pad_z // 2 if pad_z > 0 else 0
-#             pad_z_after = pad_z - pad_z_before if pad_z > 0 else 0
-#             pad_y_before = pad_y // 2 if pad_y > 0 else 0
-#             pad_y_after = pad_y - pad_y_before if pad_y > 0 else 0
-#             pad_x_before = pad_x // 2 if pad_x > 0 else 0
-#             pad_x_after = pad_x - pad_x_before if pad_x > 0 else 0
-            
-#             # Apply padding if needed
-#             if pad_z > 0 or pad_y > 0 or pad_x > 0:
-#                 source_patch = np.pad(source_patch, 
-#                                     ((pad_z_before, pad_z_after), 
-#                                      (pad_y_before, pad_y_after), 
-#                                      (pad_x_before, pad_x_after)), 
-#                                     mode='constant', constant_values=0)
-#                 target_patch = np.pad(target_patch, 
-#                                     ((pad_z_before, pad_z_after), 
-#                                      (pad_y_before, pad_y_after), 
-#                                      (pad_x_before, pad_x_after)), 
-#                                     mode='constant', constant_values=0)
-            
-#             # Verify final shape is exactly what we expect
-#             assert source_patch.shape == expected_shape, f"Expected {expected_shape}, got {source_patch.shape}"
-#             assert target_patch.shape == expected_shape, f"Expected {expected_shape}, got {target_patch.shape}"
-            
-#             # Verify patch is centered correctly
-#             # Center of patch should align with body center
-#             patch_center_y = y_start + self.patch_size[0] // 2
-#             patch_center_x = x_start + self.patch_size[1] // 2
-            
-#             # Extract organ masks if available
-#             masks = {}
-#             if pair_data.get('target_seg'):
-#                 try:
-#                     seg_vol = nib.load(pair_data['target_seg']).get_fdata()
-#                     mask_patch = seg_vol[z_start:z_end, y_start:y_end, x_start:x_end]
-                    
-#                     # Apply same padding to masks if needed
-#                     if mask_patch.shape != expected_shape:
-#                         mask_patch = np.pad(mask_patch, 
-#                                           ((pad_z_before, pad_z_after), 
-#                                            (pad_y_before, pad_y_after), 
-#                                            (pad_x_before, pad_x_after)), 
-#                                           mode='constant', constant_values=0)
-                    
-#                     masks = self._extract_organ_masks_from_patch(mask_patch)
-#                 except Exception as e:
-#                     logger.debug(f"Could not load masks: {e}")
-            
-#             # Augmentation
-#             if self.augment:
-#                 source_patch, target_patch, masks = self._augment(
-#                     source_patch, target_patch, masks
-#                 )
-            
-#             # Convert to tensors
-#             source_tensor = torch.from_numpy(source_patch).unsqueeze(0).float()
-#             target_tensor = torch.from_numpy(target_patch).unsqueeze(0).float()
-            
-#             mask_tensors = {
-#                 organ: torch.from_numpy(mask).unsqueeze(0).float() 
-#                 for organ, mask in masks.items()
-#             }
-            
-#             # Get phase information
-#             source_phase = pair_data['source_phase']
-#             target_phase = pair_data['target_phase']
-            
-#             return {
-#                 'source': source_tensor,
-#                 'target': target_tensor,
-#                 'source_phase': source_phase,
-#                 'target_phase': target_phase,
-#                 'source_phase_idx': self.phase_to_idx.get(source_phase, 0),
-#                 'target_phase_idx': self.phase_to_idx.get(target_phase, 1),
-#                 'masks': mask_tensors,
-#                 'case_id': pair_data['case_id'],
-#                 'patch_center': (patch_center_y, patch_center_x)  # For debugging
-#             }
-            
-#         except Exception as e:
-#             logger.error(f"Error loading patch {idx}: {e}")
-#             # Return dummy data
-#             return {
-#                 'source': torch.zeros(1, self.patch_depth, *self.patch_size),
-#                 'target': torch.zeros(1, self.patch_depth, *self.patch_size),
-#                 'source_phase': 'error',
-#                 'target_phase': 'error',
-#                 'source_phase_idx': 0,
-#                 'target_phase_idx': 1,
-#                 'masks': {},
-#                 'case_id': 'error',
-#                 'patch_center': (0, 0)
-#             }
-
-
-
 
 class CTPhaseDataset(Dataset):
     """
@@ -1123,6 +682,19 @@ def save_sample_patches(
     generator.eval()
     save_dir = Path(save_dir) / f"epoch_{epoch}"
     save_dir.mkdir(parents=True, exist_ok=True)
+
+    # ✅ DELETE OLD EPOCH FOLDERS (keep only last 5 epochs)
+    parent_dir = save_dir.parent
+    epoch_dirs = sorted(parent_dir.glob('epoch_*'), key=lambda x: int(x.name.split('_')[1]))
+    
+    if len(epoch_dirs) > 10:  # Keep only last 5 epochs
+        for old_dir in epoch_dirs[:-10]:
+            try:
+                import shutil
+                shutil.rmtree(old_dir)
+                logger.info(f"Deleted old sample directory: {old_dir.name}")
+            except Exception as e:
+                logger.warning(f"Could not delete {old_dir}: {e}")
     
     saved_count = 0
     counter = 0
@@ -1419,6 +991,50 @@ class CTPhaseTrainer:
         logger.info(f"Label smoothing: Real={self.real_label_smoothing}, Fake={self.fake_label_smoothing}")
         logger.info(f"Discriminator updates per generator update: {self.disc_updates_per_gen}")
     
+    def load_checkpoint(self, checkpoint_path: str) -> bool:
+        """
+        Load model and optimizer states from a checkpoint file.
+        
+        Args:
+            checkpoint_path: Path to the checkpoint file (.pth)
+        
+        Returns:
+            bool: True if loading was successful, False otherwise
+        """
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
+            
+            # Load model states
+            self.generator.load_state_dict(checkpoint['generator_state'])
+            self.disc_source.load_state_dict(checkpoint['disc_source_state'])
+            self.disc_target.load_state_dict(checkpoint['disc_target_state'])
+            
+            # Load optimizer states
+            self.opt_gen.load_state_dict(checkpoint['opt_gen_state'])
+            self.opt_disc_source.load_state_dict(checkpoint['opt_disc_source_state'])
+            self.opt_disc_target.load_state_dict(checkpoint['opt_disc_target_state'])
+            
+            # Load training state
+            self.current_epoch = checkpoint['epoch']
+            
+            # Handle val_metrics being either a dict or a float (for backward compatibility)
+            val_metrics = checkpoint.get('val_metrics', {})
+            if isinstance(val_metrics, dict):
+                self.best_val_loss = val_metrics.get('val_loss', float('inf'))
+            else:
+                # Old format where val_metrics might just be a loss value
+                self.best_val_loss = float(val_metrics) if val_metrics else float('inf')
+            
+            logger.info(f"✓ Loaded checkpoint from {checkpoint_path} at epoch {self.current_epoch}")
+            logger.info(f"  Best val loss: {self.best_val_loss:.4f}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint {checkpoint_path}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+        
     def train_step(self, batch: Dict) -> Dict[str, float]:
         """Single training step."""
         
@@ -1532,6 +1148,7 @@ class CTPhaseTrainer:
         }
 
         self.loss_tracker.update_batch(losses)
+        torch.cuda.empty_cache()
         return losses
     
     def train_epoch(self, train_loader: DataLoader) -> Dict[str, float]:
@@ -1552,6 +1169,7 @@ class CTPhaseTrainer:
             try:
                 losses = self.train_step(batch)
                 
+
                 # Accumulate losses
                 for key, value in losses.items():
                     epoch_losses[key].append(value)
@@ -1627,7 +1245,7 @@ class CTPhaseTrainer:
         }
     
     def save_checkpoint(self, val_metrics: Dict[str, float], is_best: bool = False):
-        """Save model checkpoint."""
+        """Save model checkpoint and clean up old ones."""
         
         checkpoint = {
             'epoch': self.current_epoch,
@@ -1640,30 +1258,54 @@ class CTPhaseTrainer:
             'val_metrics': val_metrics,
             'config': self.config
         }
-        checkpoint = {
-            'epoch': self.current_epoch,
-            'generator_state': self.generator.state_dict(),
-            'disc_source_state': self.disc_source.state_dict(),
-            'disc_target_state': self.disc_target.state_dict(),
-            'opt_gen_state': self.opt_gen.state_dict(),
-            'opt_disc_source_state': self.opt_disc_source.state_dict(),
-            'opt_disc_target_state': self.opt_disc_target.state_dict(),
-            'val_metrics': val_metrics,
-            'config': self.config
-        }
         
-        # Save regular checkpoint
-        path = self.output_dir / f'checkpoint_epoch_{self.current_epoch}.pth'
-        torch.save(checkpoint, path)
+        # Save current checkpoint
+        current_path = self.output_dir / f'checkpoint_epoch_{self.current_epoch}.pth'
+        torch.save(checkpoint, current_path)
+        logger.info(f"Saved checkpoint: {current_path}")
         
         # Save best model
         if is_best:
             best_path = self.output_dir / 'best_model.pth'
             torch.save(checkpoint, best_path)
-            logger.info(f"New best model saved! Val loss: {val_metrics['val_loss']:.4f}, "
-                       f"PSNR: {val_metrics['psnr']:.2f}, SSIM: {val_metrics['ssim']:.4f}")
-    
-    def train(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
+            logger.info(f"New best model saved! Val loss: {val_metrics['val_loss']:.4f}")
+        
+        # ✅ KEEP ONLY LAST N CHECKPOINTS
+        keep_last_n = self.config.get('keep_last_n_checkpoints', 10)
+        self._cleanup_old_checkpoints(keep_last_n)
+
+    def _cleanup_old_checkpoints(self, keep_last_n: int = 3):
+        """Delete old checkpoints, keeping only the last N."""
+        import re
+        
+        # Find all checkpoint files
+        checkpoint_files = list(self.output_dir.glob('checkpoint_epoch_*.pth'))
+        
+        if len(checkpoint_files) <= keep_last_n:
+            return  # Nothing to delete
+        
+        # Extract epoch numbers and sort
+        checkpoints_with_epochs = []
+        for ckpt_path in checkpoint_files:
+            match = re.search(r'checkpoint_epoch_(\d+)\.pth', ckpt_path.name)
+            if match:
+                epoch_num = int(match.group(1))
+                checkpoints_with_epochs.append((epoch_num, ckpt_path))
+        
+        # Sort by epoch number
+        checkpoints_with_epochs.sort(key=lambda x: x[0])
+        
+        # Delete all except the last N
+        to_delete = checkpoints_with_epochs[:-keep_last_n]
+        
+        for epoch_num, ckpt_path in to_delete:
+            try:
+                ckpt_path.unlink()
+                logger.info(f"Deleted old checkpoint: {ckpt_path.name}")
+            except Exception as e:
+                logger.warning(f"Could not delete {ckpt_path}: {e}")
+
+    def train(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int, start_epoch:int):
         """Main training loop."""
         logger.info(f"Starting training for {epochs} epochs")
         logger.info(f"Training batches: {len(train_loader)}, Val batches: {len(val_loader)}")
@@ -1672,8 +1314,12 @@ class CTPhaseTrainer:
         save_samples_interval = self.config.get('save_samples_interval', 1)
         num_samples = self.config.get('num_samples_to_save', 5)
         
-        for epoch in range(epochs):
+        for epoch in range(start_epoch, epochs):
             self.current_epoch = epoch
+            
+            # Update the combined_loss epoch for warmup schedule
+            if hasattr(self.combined_loss, 'set_epoch'):
+                self.combined_loss.set_epoch(epoch)
             
             # Train
             train_losses = self.train_epoch(train_loader)
@@ -1682,7 +1328,7 @@ class CTPhaseTrainer:
             val_metrics = self.validate(val_loader)
             
             # Log
-            logger.info(f"\nEpoch {epoch + 1}/{epochs} Summary:")
+            logger.info(f"\nEpoch {epoch}/{epochs} Summary:")
             logger.info(f"  Train - Total: {train_losses['gen_total']:.4f}, "
                        f"Cycle: {train_losses['gen_cycle']:.4f}, "
                        f"MSE: {train_losses['gen_mse']:.4f}, "

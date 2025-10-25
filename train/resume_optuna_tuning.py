@@ -11,6 +11,7 @@ import torch
 from torch.utils.data import DataLoader
 from pathlib import Path
 import logging
+import random
 
 # Import your training modules
 from ct_phase_training import CTPhaseDataset, CTPhaseTrainer
@@ -18,7 +19,6 @@ from dataloader_train import load_phase_mapping, create_data_pairs
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 def create_objective(base_config: dict, data_splits: dict):
     """
@@ -162,12 +162,12 @@ def create_objective(base_config: dict, data_splits: dict):
     
     return objective
 
-
 def resume_optimization(
     db_path: str = "optuna_study.db",
     study_name: str = "ct_phase_optimization",
     n_trials: int = 50,
-    base_config: dict = None
+    base_config: dict = None,
+    subset_fraction: float = 0.1
 ):
     """
     Resume Optuna optimization from database.
@@ -177,6 +177,7 @@ def resume_optimization(
         study_name: Name of study
         n_trials: Number of additional trials to run
         base_config: Base configuration dict
+        subset_fraction: Fraction of data to use for tuning
     """
     
     # Default base config
@@ -232,6 +233,30 @@ def resume_optimization(
     )
     logger.info(f"✅ Data loaded: {len(data_splits['train'])} train pairs")
     
+    # Handle subset_fraction for data splits
+    if subset_fraction < 1.0:
+        random.seed(42)
+        
+        n_train = int(len(data_splits['train']) * subset_fraction)
+        n_val = int(len(data_splits['val']) * subset_fraction)
+        
+        train_subset = random.sample(data_splits['train'], n_train)
+        val_subset = random.sample(data_splits['val'], n_val)
+        
+        logger.info(f"Using {subset_fraction:.1%} of data for Optuna tuning:")
+        logger.info(f"  Train: {n_train}/{len(data_splits['train'])} pairs")
+        logger.info(f"  Val: {n_val}/{len(data_splits['val'])} pairs")
+    else:
+        train_subset = data_splits['train']
+        val_subset = data_splits['val']
+        logger.info("Using full dataset for Optuna tuning")
+    
+    # Update data_splits with subsets
+    data_splits = {
+        'train': train_subset,
+        'val': val_subset
+    }
+    
     # Create objective
     objective = create_objective(base_config, data_splits)
     
@@ -276,7 +301,6 @@ def resume_optimization(
             logger.info(f"Best trial so far: {study.best_trial.number}")
             logger.info(f"Best value so far: {study.best_value:.6f}")
 
-
 if __name__ == "__main__":
     import argparse
     
@@ -300,7 +324,7 @@ if __name__ == "__main__":
         'output_dir': str(Path(args.db).parent / 'optuna_tuning'),
         
         'overlap_ratio': 0.75,
-        'batch_size': 4,
+        'batch_size': 8,
         'trial_epochs': 20,
         
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
@@ -311,5 +335,6 @@ if __name__ == "__main__":
         db_path=args.db,
         study_name=args.study_name,
         n_trials=args.n_trials,
-        base_config=base_config
+        base_config=base_config,
+        subset_fraction=0.25
     )
