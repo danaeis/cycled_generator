@@ -655,20 +655,26 @@ def run_full_training():
     
     # Configuration
     config = {
-        'data_dir': '../ncct_cect/vindr_ds/deformable_registeredbspline',
+        'data_dir': '../ncct_cect/vindr_ds/deformable_registered_bspline',
         'labels_csv': '../ncct_cect/vindr_ds/labels.csv',
-        'output_dir': '../ncct_cect/vindr_ds/test_mse0_cpatch96_bspline_training',
+        'output_dir': '../ncct_cect/vindr_ds/patch_bspline_training',
         
-        'patch_size': (96,128),
-        'patch_depth': 11,
+        'patch_size': (128, 192),
+        'patch_depth': 15,
         'overlap_ratio': 0.5,
 
+        'pad_mode': 'constant',            # Padding mode
+        'save_nifti': True,               # Enable NIfTI export
+    
         'disc_lr_multiplier':1.599,
-        'lambda_cycle': 5.418,
-        # 'lambda_mse': 23.928,
-        'lambda_mse': 0,
-        'lambda_focal': 4.777,
-        'lambda_adv': 0.173,
+        'lambda_cycle': 10,
+        
+        "lambda_mse_initial": 1.0,      
+        "lambda_mse_final": 100.0,      
+        "mse_warmup_epochs": 50,
+
+        'lambda_focal': 5,
+        'lambda_adv': 10,
         # Training stability
         'adv_warmup_epochs': 8,
         'disc_updates_per_gen': 2,

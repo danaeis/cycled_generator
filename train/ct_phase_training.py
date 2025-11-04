@@ -43,7 +43,6 @@ class CTPhaseDataset(Dataset):
     IMPORTANT: Volumes are in (width, height, depth) format from nibabel.
     We convert to (depth, height, width) for processing.
     """
-    
     def __init__(
         self,
         data_pairs: List[Dict],
@@ -62,6 +61,7 @@ class CTPhaseDataset(Dataset):
         self.body_focused = body_focused
         self.body_threshold = body_threshold
         self.patch_coords = []
+        self.padding_info = {}  # Store padding info per pair_idx
         
         # Phase mapping
         self.phase_to_idx = {
@@ -79,6 +79,35 @@ class CTPhaseDataset(Dataset):
         self._compute_patch_coordinates()
         logger.info(f"Generated {len(self.patch_coords)} total patches")
     
+    def _compute_padding(self, height: int, width: int) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        """
+        Compute padding needed for height and width to meet patch_size requirements.
+        
+        Args:
+            height: Original height of the volume
+            width: Original width of the volume
+            
+        Returns:
+            Tuple of (pad_height, pad_width), where each is (pad_before, pad_after)
+        """
+        pad_height = (0, 0)
+        pad_width = (0, 0)
+        
+        if height < self.patch_size[0]:
+            total_pad = self.patch_size[0] - height
+            pad_before = total_pad // 2
+            pad_after = total_pad - pad_before
+            pad_height = (pad_before, pad_after)
+        
+        if width < self.patch_size[1]:
+            total_pad = self.patch_size[1] - width
+            pad_before = total_pad // 2
+            pad_after = total_pad - pad_before
+            pad_width = (pad_before, pad_after)
+        
+        return pad_height, pad_width
+    
+
     def _find_body_center(self, volume: np.ndarray) -> Tuple[int, int]:
         """
         Find the center of the body region.
@@ -99,7 +128,7 @@ class CTPhaseDataset(Dataset):
     
     def _compute_patch_coordinates(self):
         """
-        Pre-compute centered patch coordinates.
+        Pre-compute centered patch coordinates with padding for small volumes.
         
         Handles volume shape conversion: (W, H, D) -> (D, H, W)
         """
@@ -128,21 +157,31 @@ class CTPhaseDataset(Dataset):
                 depth_new, height_new, width_new = source_vol.shape
                 # logger.info(f"  After transpose (D, H, W) = {source_vol.shape}")
                 
-                # Check minimum requirements
+                # Check minimum depth requirements
                 if depth_new < self.patch_depth + 2:
                     logger.warning(f"Insufficient depth ({depth_new}) for pair {pair_idx}, skipping")
                     continue
                 
-                if height_new < self.patch_size[0] or width_new < self.patch_size[1]:
-                    logger.warning(f"Insufficient spatial size for pair {pair_idx}, skipping")
-                    continue
+                # Compute padding for height and width
+                pad_height, pad_width = self._compute_padding(height_new, width_new)
+                self.padding_info[pair_idx] = (pad_height, pad_width)
+                
+                # Update dimensions after padding
+                padded_height = height_new + sum(pad_height)
+                padded_width = width_new + sum(pad_width)
+                
+                logger.info(f"  Padding applied: Height {pad_height}, Width {pad_width}")
+                logger.info(f"  Padded dimensions (D, H, W) = ({depth_new}, {padded_height}, {padded_width})")
                 
                 # Find center of body region (in axial plane)
                 if self.body_focused:
                     center_y, center_x = self._find_body_center(source_vol)
+                    # Adjust center for padding
+                    center_y += pad_height[0]
+                    center_x += pad_width[0]
                 else:
-                    center_y = height_new // 2
-                    center_x = width_new // 2
+                    center_y = padded_height // 2
+                    center_x = padded_width // 2
                 
                 # Calculate step sizes for overlap
                 step_y = max(1, int(self.patch_size[0] * (1 - self.overlap_ratio)))
@@ -152,7 +191,7 @@ class CTPhaseDataset(Dataset):
                 y_coords = self._generate_centered_coordinates(
                     center=center_y,
                     patch_size=self.patch_size[0],
-                    volume_size=height_new,
+                    volume_size=padded_height,
                     step=step_y
                 )
                 
@@ -160,7 +199,7 @@ class CTPhaseDataset(Dataset):
                 x_coords = self._generate_centered_coordinates(
                     center=center_x,
                     patch_size=self.patch_size[1],
-                    volume_size=width_new,
+                    volume_size=padded_width,
                     step=step_x
                 )
                 
@@ -175,9 +214,9 @@ class CTPhaseDataset(Dataset):
                             self.patch_coords.append((pair_idx, center_z, y_start, x_start))
                             patch_count += 1
                 
-                # logger.info(f"  Generated {patch_count} centered patches")
-                # logger.info(f"  Body center: ({center_y}, {center_x})")
-                # logger.info(f"  Spatial coverage: {len(y_coords)}(Y) x {len(x_coords)}(X) x {len(z_range)}(Z)")
+                logger.info(f"  Generated {patch_count} centered patches")
+                logger.info(f"  Body center: ({center_y}, {center_x})")
+                logger.info(f"  Spatial coverage: {len(y_coords)}(Y) x {len(x_coords)}(X) x {len(z_range)}(Z)")
                 
             except Exception as e:
                 logger.error(f"Error processing pair {pair_idx}: {e}")
@@ -185,6 +224,141 @@ class CTPhaseDataset(Dataset):
                 traceback.print_exc()
                 continue
     
+    def __getitem__(self, idx: int) -> Dict:
+        """
+        Get a single patch with padding if necessary.
+        
+        Returns:
+            Dictionary with:
+                - source: [1, D, H, W] tensor
+                - target: [1, D, H, W] tensor
+                - masks: {organ: [1, D, H, W] tensor}
+                - phase information
+        """
+        pair_idx, center_z, y_start, x_start = self.patch_coords[idx]
+        pair_data = self.data_pairs[pair_idx]
+        
+        try:
+            # Load volumes - shape is (W, H, D) from nibabel
+            source_vol = nib.load(pair_data['source_path']).get_fdata()
+            target_vol = nib.load(pair_data['target_path']).get_fdata()
+            
+            # Transpose to (D, H, W) for processing
+            source_vol = np.transpose(source_vol, (2, 1, 0))
+            target_vol = np.transpose(target_vol, (2, 1, 0))
+            
+            # Get padding info
+            pad_height, pad_width = self.padding_info.get(pair_idx, ((0, 0), (0, 0)))
+            
+            # Apply padding to height and width
+            if sum(pad_height) > 0 or sum(pad_width) > 0:
+                source_vol = np.pad(
+                    source_vol,
+                    pad_width=((0, 0), pad_height, pad_width),  # Pad H and W, not D
+                    mode='constant',
+                    constant_values=0
+                )
+                target_vol = np.pad(
+                    target_vol,
+                    pad_width=((0, 0), pad_height, pad_width),
+                    mode='constant',
+                    constant_values=0
+                )
+            
+            # Normalize
+            source_vol = self._normalize_intensity(source_vol)
+            target_vol = self._normalize_intensity(target_vol)
+            
+            # Extract patch: [D, H, W]
+            padding = self.patch_depth // 2
+            z_start = center_z - padding
+            z_end = center_z + padding + 1
+            y_end = y_start + self.patch_size[0]
+            x_end = x_start + self.patch_size[1]
+            
+            # Extract patches
+            source_patch = source_vol[z_start:z_end, y_start:y_end, x_start:x_end]
+            target_patch = target_vol[z_start:z_end, y_start:y_end, x_start:x_end]
+            
+            # Verify shape
+            expected_shape = (self.patch_depth, self.patch_size[0], self.patch_size[1])
+            if source_patch.shape != expected_shape:
+                logger.warning(f"Patch shape mismatch: expected {expected_shape}, got {source_patch.shape}")
+            
+            # Calculate patch center for debugging
+            patch_center_y = y_start + self.patch_size[0] // 2
+            patch_center_x = x_start + self.patch_size[1] // 2
+            
+            # Extract organ masks if available
+            masks = {}
+            if pair_data.get('target_seg'):
+                try:
+                    seg_vol = nib.load(pair_data['target_seg']).get_fdata()
+                    # Transpose segmentation too
+                    seg_vol = np.transpose(seg_vol, (2, 1, 0))
+                    # Apply same padding to segmentation
+                    if sum(pad_height) > 0 or sum(pad_width) > 0:
+                        seg_vol = np.pad(
+                            seg_vol,
+                            pad_width=((0, 0), pad_height, pad_width),
+                            mode='constant',
+                            constant_values=0
+                        )
+                    masks = self._extract_organ_masks(
+                        seg_vol, z_start, z_end, y_start, y_end, x_start, x_end
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not load masks: {e}")
+            
+            # Augmentation
+            if self.augment:
+                source_patch, target_patch, masks = self._augment(
+                    source_patch, target_patch, masks
+                )
+            
+            # Convert to tensors: [D, H, W] -> [1, D, H, W]
+            source_tensor = torch.from_numpy(source_patch).unsqueeze(0).float()
+            target_tensor = torch.from_numpy(target_patch).unsqueeze(0).float()
+            
+            mask_tensors = {
+                organ: torch.from_numpy(mask).unsqueeze(0).float() 
+                for organ, mask in masks.items()
+            }
+            
+            # Get phase information
+            source_phase = pair_data['source_phase']
+            target_phase = pair_data['target_phase']
+            
+            return {
+                'source': source_tensor,
+                'target': target_tensor,
+                'source_phase': source_phase,
+                'target_phase': target_phase,
+                'source_phase_idx': self.phase_to_idx.get(source_phase, 0),
+                'target_phase_idx': self.phase_to_idx.get(target_phase, 1),
+                'masks': mask_tensors,
+                'case_id': pair_data['case_id'],
+                'patch_center': (patch_center_y, patch_center_x)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error loading patch {idx}: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Return dummy data with correct shape
+            return {
+                'source': torch.zeros(1, self.patch_depth, *self.patch_size),
+                'target': torch.zeros(1, self.patch_depth, *self.patch_size),
+                'source_phase': 'error',
+                'target_phase': 'error',
+                'source_phase_idx': 0,
+                'target_phase_idx': 1,
+                'masks': {},
+                'case_id': 'error',
+                'patch_center': (0, 0)
+            }
+
     def _generate_centered_coordinates(
         self, 
         center: int, 
@@ -285,6 +459,55 @@ class CTPhaseDataset(Dataset):
         
         return masks
     
+    def _pad_patch(
+        self, 
+        patch: np.ndarray, 
+        target_size: Tuple[int, int, int]
+    ) -> np.ndarray:
+        """
+        Pad patch to target size if smaller.
+        
+        Args:
+            patch: [D, H, W] array
+            target_size: (target_D, target_H, target_W)
+            
+        Returns:
+            Padded patch [target_D, target_H, target_W]
+        """
+        current_shape = patch.shape
+        target_d, target_h, target_w = target_size
+        
+        # Calculate padding needed for each dimension
+        pad_d = max(0, target_d - current_shape[0])
+        pad_h = max(0, target_h - current_shape[1])
+        pad_w = max(0, target_w - current_shape[2])
+        
+        if pad_d == 0 and pad_h == 0 and pad_w == 0:
+            return patch  # No padding needed
+        
+        # Pad symmetrically (or as close as possible)
+        pad_d_before = pad_d // 2
+        pad_d_after = pad_d - pad_d_before
+        pad_h_before = pad_h // 2
+        pad_h_after = pad_h - pad_h_before
+        pad_w_before = pad_w // 2
+        pad_w_after = pad_w - pad_w_before
+        
+        # Apply padding
+        pad_width = (
+            (pad_d_before, pad_d_after),
+            (pad_h_before, pad_h_after),
+            (pad_w_before, pad_w_after)
+        )
+        
+        if self.pad_mode == 'constant':
+            padded = np.pad(patch, pad_width, mode='constant', constant_values=patch.min())
+        else:
+            padded = np.pad(patch, pad_width, mode=self.pad_mode)
+        
+        return padded
+
+
     def _augment(self, source, target, masks):
         """
         Apply 3D augmentations.
@@ -318,114 +541,7 @@ class CTPhaseDataset(Dataset):
     def __len__(self) -> int:
         return len(self.patch_coords)
     
-    def __getitem__(self, idx: int) -> Dict:
-        """
-        Get a single patch.
-        
-        Returns:
-            Dictionary with:
-                - source: [1, D, H, W] tensor
-                - target: [1, D, H, W] tensor
-                - masks: {organ: [1, D, H, W] tensor}
-                - phase information
-        """
-        pair_idx, center_z, y_start, x_start = self.patch_coords[idx]
-        pair_data = self.data_pairs[pair_idx]
-        
-        try:
-            # Load volumes - shape is (W, H, D) from nibabel
-            source_vol = nib.load(pair_data['source_path']).get_fdata()
-            target_vol = nib.load(pair_data['target_path']).get_fdata()
-            
-            # Transpose to (D, H, W) for processing
-            source_vol = np.transpose(source_vol, (2, 1, 0))
-            target_vol = np.transpose(target_vol, (2, 1, 0))
-            
-            # Normalize
-            source_vol = self._normalize_intensity(source_vol)
-            target_vol = self._normalize_intensity(target_vol)
-            
-            # Extract patch: [D, H, W]
-            padding = self.patch_depth // 2
-            z_start = center_z - padding
-            z_end = center_z + padding + 1
-            y_end = y_start + self.patch_size[0]
-            x_end = x_start + self.patch_size[1]
-            
-            # Extract patches
-            source_patch = source_vol[z_start:z_end, y_start:y_end, x_start:x_end]
-            target_patch = target_vol[z_start:z_end, y_start:y_end, x_start:x_end]
-            
-            # Verify shape
-            expected_shape = (self.patch_depth, self.patch_size[0], self.patch_size[1])
-            if source_patch.shape != expected_shape:
-                logger.warning(f"Patch shape mismatch: expected {expected_shape}, got {source_patch.shape}")
-            
-            # Calculate patch center for debugging
-            patch_center_y = y_start + self.patch_size[0] // 2
-            patch_center_x = x_start + self.patch_size[1] // 2
-            
-            # Extract organ masks if available
-            masks = {}
-            if pair_data.get('target_seg'):
-                try:
-                    seg_vol = nib.load(pair_data['target_seg']).get_fdata()
-                    # Transpose segmentation too
-                    seg_vol = np.transpose(seg_vol, (2, 1, 0))
-                    masks = self._extract_organ_masks(
-                        seg_vol, z_start, z_end, y_start, y_end, x_start, x_end
-                    )
-                except Exception as e:
-                    logger.debug(f"Could not load masks: {e}")
-            
-            # Augmentation
-            if self.augment:
-                source_patch, target_patch, masks = self._augment(
-                    source_patch, target_patch, masks
-                )
-            
-            # Convert to tensors: [D, H, W] -> [1, D, H, W]
-            source_tensor = torch.from_numpy(source_patch).unsqueeze(0).float()
-            target_tensor = torch.from_numpy(target_patch).unsqueeze(0).float()
-            
-            mask_tensors = {
-                organ: torch.from_numpy(mask).unsqueeze(0).float() 
-                for organ, mask in masks.items()
-            }
-            
-            # Get phase information
-            source_phase = pair_data['source_phase']
-            target_phase = pair_data['target_phase']
-            
-            return {
-                'source': source_tensor,
-                'target': target_tensor,
-                'source_phase': source_phase,
-                'target_phase': target_phase,
-                'source_phase_idx': self.phase_to_idx.get(source_phase, 0),
-                'target_phase_idx': self.phase_to_idx.get(target_phase, 1),
-                'masks': mask_tensors,
-                'case_id': pair_data['case_id'],
-                'patch_center': (patch_center_y, patch_center_x)
-            }
-            
-        except Exception as e:
-            logger.error(f"Error loading patch {idx}: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            # Return dummy data with correct shape
-            return {
-                'source': torch.zeros(1, self.patch_depth, *self.patch_size),
-                'target': torch.zeros(1, self.patch_depth, *self.patch_size),
-                'source_phase': 'error',
-                'target_phase': 'error',
-                'source_phase_idx': 0,
-                'target_phase_idx': 1,
-                'masks': {},
-                'case_id': 'error',
-                'patch_center': (0, 0)
-            }
+
 # ============================================================================
 # MODEL ARCHITECTURE
 # ============================================================================
@@ -666,7 +782,9 @@ def save_sample_patches(
     epoch: int,
     save_dir: Path,
     device: torch.device,
-    num_samples: int = 5
+    num_samples: int = 5,
+    save_nifti: bool = True
+    
 ):
     """
     Save sample generated patches for visual inspection.
@@ -682,12 +800,19 @@ def save_sample_patches(
     generator.eval()
     save_dir = Path(save_dir) / f"epoch_{epoch}"
     save_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create subdirectories for different output types
+    png_dir = save_dir / 'comparisons'
+    nifti_dir = save_dir / 'nifti_volumes'
+    png_dir.mkdir(exist_ok=True)
+    if save_nifti:
+        nifti_dir.mkdir(exist_ok=True)
 
-    # ✅ DELETE OLD EPOCH FOLDERS (keep only last 5 epochs)
+    # ✅ DELETE OLD EPOCH FOLDERS (keep only last 10 epochs)
     parent_dir = save_dir.parent
     epoch_dirs = sorted(parent_dir.glob('epoch_*'), key=lambda x: int(x.name.split('_')[1]))
     
-    if len(epoch_dirs) > 10:  # Keep only last 5 epochs
+    if len(epoch_dirs) > 10:  # Keep only last 10 epochs
         for old_dir in epoch_dirs[:-10]:
             try:
                 import shutil
@@ -696,15 +821,39 @@ def save_sample_patches(
             except Exception as e:
                 logger.warning(f"Could not delete {old_dir}: {e}")
     
-    saved_count = 0
-    counter = 0
+    # ✅ RANDOMLY SELECT PATCHES INSTEAD OF SEQUENTIAL SELECTION
+    # First, collect all batches
+    logger.info("Collecting validation batches for random sampling...")
+    all_batches = []
     with torch.no_grad():
         for batch in val_loader:
-            counter += 1
+            all_batches.append(batch)
+    
+    total_patches = len(all_batches) * (all_batches[0]['source'].size(0) if all_batches else 0)
+    logger.info(f"Total validation patches available: {total_patches}")
+    
+    # Randomly select batch indices
+    if len(all_batches) == 0:
+        logger.warning("No validation batches available!")
+        return
+    
+    num_batches_to_sample = min(num_samples, len(all_batches))
+    selected_batch_indices = np.random.choice(
+        len(all_batches), 
+        size=num_batches_to_sample, 
+        replace=False
+    )
+    
+    logger.info(f"Randomly selected {num_batches_to_sample} batches from {len(all_batches)} available")
+    
+    saved_count = 0
+    with torch.no_grad():
+        for batch_idx in selected_batch_indices:
             if saved_count >= num_samples:
                 break
-            if counter%25 != 0:
-                continue
+                
+            batch = all_batches[batch_idx]
+            
             try:
                 real_source = batch['source'].to(device)
                 real_target = batch['target'].to(device)
@@ -718,11 +867,20 @@ def save_sample_patches(
                 generated_target = generator(real_source, target_phase_idx)
                 reconstructed_source = generator(generated_target, source_phase_idx)
                 
-                # Process each sample in batch
+                # Process each sample in batch (or randomly select from batch)
                 batch_size = real_source.size(0)
-                for i in range(min(batch_size, num_samples - saved_count)):
+                samples_from_batch = min(batch_size, num_samples - saved_count)
+                
+                # Randomly select samples from this batch
+                if batch_size > samples_from_batch:
+                    sample_indices = np.random.choice(batch_size, size=samples_from_batch, replace=False)
+                else:
+                    sample_indices = range(batch_size)
+                
+                for i in sample_indices:
+                    # ===== SAVE PNG COMPARISON =====
                     # Get middle slice from 3D patch [1, D, H, W] -> [H, W]
-                    mid_slice = real_source.shape[1] // 2
+                    mid_slice = real_source.shape[2] // 2
                     
                     source_slice = real_source[i, 0, mid_slice].cpu().numpy()
                     target_slice = real_target[i, 0, mid_slice].cpu().numpy()
@@ -781,10 +939,51 @@ def save_sample_patches(
                     
                     plt.tight_layout()
                     
-                    # Save figure
-                    save_path = save_dir / f'sample_{saved_count:03d}_{case_id[i]}.png'
-                    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+                    # Save PNG figure
+                    png_path = png_dir / f'sample_{saved_count:03d}_{case_id[i]}.png'
+                    plt.savefig(png_path, dpi=150, bbox_inches='tight')
                     plt.close()
+                    
+                    # ===== SAVE NIFTI VOLUMES =====
+                    if save_nifti:
+                        # Extract full 3D patches [1, D, H, W] -> [D, H, W]
+                        source_vol = real_source[i, 0].cpu().numpy()
+                        target_vol = real_target[i, 0].cpu().numpy()
+                        generated_vol = generated_target[i, 0].cpu().numpy()
+                        reconstructed_vol = reconstructed_source[i, 0].cpu().numpy()
+                        
+                        # Create case-specific subdirectory
+                        case_nifti_dir = nifti_dir / f'sample_{saved_count:03d}_{case_id[i]}'
+                        case_nifti_dir.mkdir(exist_ok=True)
+                        
+                        # Save as NIfTI files (transpose back to standard orientation if needed)
+                        # Note: volumes are in [D, H, W] format, NIfTI standard is typically [W, H, D]
+                        def save_nifti_volume(volume, filepath):
+                            """Helper to save volume as NIfTI"""
+                            # Transpose from [D, H, W] to [W, H, D] for standard NIfTI orientation
+                            volume_transposed = np.transpose(volume, (2, 1, 0))
+                            nifti_img = nib.Nifti1Image(volume_transposed, affine=np.eye(4))
+                            nib.save(nifti_img, filepath)
+                        
+                        save_nifti_volume(source_vol, case_nifti_dir / 'source.nii.gz')
+                        save_nifti_volume(target_vol, case_nifti_dir / 'target_groundtruth.nii.gz')
+                        save_nifti_volume(generated_vol, case_nifti_dir / 'target_generated.nii.gz')
+                        save_nifti_volume(reconstructed_vol, case_nifti_dir / 'source_reconstructed.nii.gz')
+                        
+                        # Save metadata
+                        metadata = {
+                            'epoch': epoch,
+                            'case_id': case_id[i],
+                            'source_phase': source_phase[i],
+                            'target_phase': target_phase[i],
+                            'patch_shape': list(source_vol.shape),
+                            'mse_generated': float(mse_gen),
+                            'mse_cycle': float(mse_cycle)
+                        }
+                        
+                        import json
+                        with open(case_nifti_dir / 'metadata.json', 'w') as f:
+                            json.dump(metadata, f, indent=2)
                     
                     saved_count += 1
                     
@@ -793,9 +992,15 @@ def save_sample_patches(
                         
             except Exception as e:
                 logger.error(f"Error saving sample patches: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
     
-    logger.info(f"Saved {saved_count} sample patches to {save_dir}")
+    logger.info(f"✓ Saved {saved_count} sample patches to {save_dir}")
+    logger.info(f"  - PNG comparisons: {png_dir}")
+    if save_nifti:
+        logger.info(f"  - NIfTI volumes: {nifti_dir}")
+
 
 
 # ============================================================================
@@ -844,29 +1049,57 @@ class CombinedLoss(nn.Module):
     """Combined loss for CycleGAN training with gradual adversarial loss warm-up."""
     
     def __init__(
-        self,
-        lambda_cycle: float = 10.0,
-        lambda_mse: float = 100.0,
-        lambda_focal: float = 5.0,
-        lambda_adv: float = 1.0,  # Adversarial loss weight
-        adv_warmup_epochs: int = 10  # Number of epochs to gradually increase adversarial loss
+        self, 
+        lambda_cycle: float = 10.0, 
+        lambda_mse_initial: float = 1.0,     # New: Initial MSE weight (low start)
+        lambda_mse_final: float = 100.0,     # New: Final/Max MSE weight
+        mse_warmup_epochs: int = 50,         # New: Epochs for MSE ramp-up
+        lambda_focal: float = 5.0, 
+        lambda_adv: float = 10.0,            # Modified: Higher initial Adv weight
+        adv_warmup_epochs: int = 1           # Modified: Short/no Adv warmup (start high)
     ):
         super().__init__()
         self.lambda_cycle = lambda_cycle
-        self.lambda_mse = lambda_mse
         self.lambda_focal = lambda_focal
         self.lambda_adv = lambda_adv
         self.adv_warmup_epochs = adv_warmup_epochs
         
-        self.mse_loss = nn.MSELoss()
-        self.focal_loss = FocalLoss(alpha=1.0, gamma=1.5)
-        self.adv_loss = nn.BCEWithLogitsLoss()
+        # MSE Ramp-up parameters
+        self.lambda_mse_initial = lambda_mse_initial
+        self.lambda_mse_final = lambda_mse_final
+        self.mse_warmup_epochs = mse_warmup_epochs
         
+        # Dynamic weights (will be updated by set_epoch)
+        self.current_adv_weight = lambda_adv
+        self.current_mse_weight = lambda_mse_initial
         self.current_epoch = 0
+        
+        # Loss functions (assuming FocalLoss and other components are defined above)
+        self.L1Loss = nn.L1Loss()
+        self.mse_loss = F.mse_loss
+        self.focal_loss = FocalLoss(alpha=1.0, gamma=1.5) 
+        self.adversarial_loss = nn.BCEWithLogitsLoss()
     
     def set_epoch(self, epoch: int):
         """Update current epoch for warm-up schedule."""
         self.current_epoch = epoch
+        # 1. MSE Loss Ramp-up: Increase importance from initial to final value
+        if self.mse_warmup_epochs > 0:
+            # Linear ramp-up from lambda_mse_initial to lambda_mse_final
+            progress = min(1.0, (epoch + 1) / self.mse_warmup_epochs)
+            self.current_mse_weight = (
+                self.lambda_mse_initial + 
+                (self.lambda_mse_final - self.lambda_mse_initial) * progress
+            )
+        else:
+             self.current_mse_weight = self.lambda_mse_final
+        
+        # 2. Adversarial Loss Warmup: Full weight quickly due to adv_warmup_epochs=1
+        if self.adv_warmup_epochs > 0:
+            progress = min(1.0, (epoch + 1) / self.adv_warmup_epochs)
+            self.current_adv_weight = self.lambda_adv * progress
+        else:
+            self.current_adv_weight = self.lambda_adv
     
     def get_adv_weight(self) -> float:
         """Calculate adversarial loss weight with warm-up."""
@@ -883,34 +1116,41 @@ class CombinedLoss(nn.Module):
         reconstructed_source: torch.Tensor,
         disc_fake_target: torch.Tensor,
         disc_fake_source: torch.Tensor,  # NEW: discriminator on reconstructed source
-        masks: Dict[str, torch.Tensor]
+        masks: Dict[str, torch.Tensor],
+        is_cycle: bool = True
     ) -> Dict[str, torch.Tensor]:
         """Calculate all generator losses."""
         
         losses = {}
+        # --- 1. Adversarial Loss (Target) ---
+        loss_adv_target = self.adversarial_loss(disc_fake_target, torch.full_like(disc_fake_target, 1.0))
+        losses['adv_target'] = self.current_adv_weight * loss_adv_target # Use dynamic Adv weight
         
-        # Get current adversarial weight (with warm-up)
-        adv_weight = self.get_adv_weight()
+        loss_adv_source = self.adversarial_loss(disc_fake_source, torch.full_like(disc_fake_source, 1.0))
+        losses['adv_source'] = self.current_adv_weight * loss_adv_source # Use dynamic Adv weight
+
+        losses['adv'] = losses['adv_source'] + losses['adv_target']
+
+        # --- 2. Cycle Consistency Loss (Source) ---
+        if is_cycle:
+            loss_cycle = self.L1Loss(reconstructed_source, real_source)
+            losses['cycle'] = self.lambda_cycle * loss_cycle
+            
+        # --- 3. Content Losses (Target Generation: gen_target vs real_target) ---
         
-        # Adversarial losses (gradually increased)
-        losses['adv_target'] = self.adv_loss(disc_fake_target, torch.ones_like(disc_fake_target)) * adv_weight
-        losses['adv_source'] = self.adv_loss(disc_fake_source, torch.ones_like(disc_fake_source)) * adv_weight
-        losses['adv'] = losses['adv_target'] + losses['adv_source']
+        # MSE Loss - Now uses dynamic weight
+        loss_mse = self.mse_loss(generated_target, real_target)
+        losses['mse'] = self.current_mse_weight * loss_mse 
         
-        # Cycle consistency loss (always active)
-        losses['cycle'] = self.mse_loss(reconstructed_source, real_source) * self.lambda_cycle
-        
-        # Direct MSE loss (always active)
-        losses['mse'] = self.mse_loss(generated_target, real_target) * self.lambda_mse
-        
-        # Focal loss with organ masks (always active)
-        if masks:
-            losses['focal'] = self.focal_loss(generated_target, real_target, masks) * self.lambda_focal
+        # Focal Loss (on target, weighted by organs)
+        if masks and any(v.sum() > 0 for v in masks.values()):
+            loss_focal = self.focal_loss(generated_target, real_target, masks)
+            losses['focal'] = self.lambda_focal * loss_focal
         else:
             losses['focal'] = torch.tensor(0.0, device=real_source.device)
-        
+
         # Total generator loss
-        losses['total'] = losses['adv'] + losses['cycle'] + losses['mse'] + losses['focal']
+        losses['total'] = losses['adv'] + losses.get('cycle', torch.tensor(0.0, device=real_source.device)) + losses['mse'] + losses['focal']
         
         return losses
 
@@ -967,7 +1207,15 @@ class CTPhaseTrainer:
         )
         
         # Loss functions
-        self.combined_loss = CombinedLoss().to(self.device)
+        self.combined_loss = CombinedLoss(
+            lambda_cycle = config.get('lambda_cycle', 10.0),
+            lambda_mse_initial = config.get('lambda_mse_initial', 1.0),
+            lambda_mse_final = config.get('lambda_mse_final', 100.0),
+            mse_warmup_epochs = config.get('mse_warmup_epochs', 50),
+            lambda_focal = config.get('lambda_focal', 5.0 ),
+            lambda_adv = config.get('lambda_adv', 10.0),
+            adv_warmup_epochs = config.get('adv_warmup_epochs', 1)
+        ).to(self.device)
         self.disc_loss = nn.BCEWithLogitsLoss()
         
         # Label smoothing for discriminator stability
@@ -1316,7 +1564,8 @@ class CTPhaseTrainer:
         
         for epoch in range(start_epoch, epochs):
             self.current_epoch = epoch
-            
+            self.combined_loss.set_epoch(epoch)
+            logger.info(f"--- Epoch {epoch+1}/{epochs} | MSE Weight: {self.combined_loss.current_mse_weight:.2f} | Adv Weight: {self.combined_loss.current_adv_weight:.2f} ---")
             # Update the combined_loss epoch for warmup schedule
             if hasattr(self.combined_loss, 'set_epoch'):
                 self.combined_loss.set_epoch(epoch)
@@ -1370,7 +1619,8 @@ class CTPhaseTrainer:
                     epoch + 1,
                     self.samples_dir,
                     self.device,
-                    num_samples=num_samples
+                    num_samples=num_samples,
+                    save_nifti=self.config.get('save_nifti', True)  # NEW
                 )
 
             

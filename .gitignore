@@ -5,5 +5,6 @@
 *.ts
 *.db
 *.pyc
+*.gz
 
 debug*/

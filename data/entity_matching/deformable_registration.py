@@ -266,8 +266,17 @@ def register_study_deformable(
         output_dir: Where to save deformable results
         method: 'bspline' or 'demons'
     """
+    # Create main output directory
     os.makedirs(output_dir, exist_ok=True)
     
+    # Define study-specific output directory
+    study_out = os.path.join(output_dir, study_id)
+    
+    # Check if study output directory already exists
+    if os.path.exists(study_out):
+        print(f"⚠️ Study {study_id} already processed at {study_out}, skipping...")
+        return
+
     registrar = DeformableRegistration()
     
     # Find non-contrast (reference)
@@ -289,9 +298,33 @@ def register_study_deformable(
     if not os.path.exists(nc_file):
         print(f"⚠️ Reference file not found: {nc_file}")
         return
-    
+    # Create study-specific output directory
+    os.makedirs(study_out, exist_ok=True)
+
     fixed = sitk.ReadImage(nc_file)
     
+    # Copy reference image
+    import shutil
+    ref_out = os.path.join(
+        study_out,
+        f"{study_id}_{nc_series}_deformable.nii.gz"
+    )
+    shutil.copy(nc_file, ref_out)
+    print(f"   ✅ Copied reference image: {ref_out}")
+    
+    # Copy reference segmentation if it exists
+    nc_seg_file = os.path.join(
+        registered_affine_dir,
+        f"{study_id}_{nc_series}_registered_seg.nii.gz"
+    )
+    if os.path.exists(nc_seg_file):
+        nc_seg_out = os.path.join(
+            study_out,
+            f"{study_id}_{nc_series}_deformable_seg.nii.gz"
+        )
+        shutil.copy(nc_seg_file, nc_seg_out)
+        print(f"   ✅ Copied reference segmentation: {nc_seg_out}")
+
     # Process all series
     series_rows = labels_df[labels_df["StudyInstanceUID"] == study_id]
     
@@ -316,7 +349,7 @@ def register_study_deformable(
             
             # Save registered volume
             out_path = os.path.join(
-                output_dir,
+                study_out,
                 f"{study_id}_{series_id}_deformable.nii.gz"
             )
             sitk.WriteImage(registered, out_path)
@@ -324,7 +357,7 @@ def register_study_deformable(
             
             # Save transform - use HDF5 format to support CompositeTransform
             transform_path = os.path.join(
-                output_dir,
+                study_out,
                 f"{study_id}_{series_id}_transform.h5"
             )
             try:
@@ -337,7 +370,7 @@ def register_study_deformable(
                     for i in range(transform.GetNumberOfTransforms()):
                         component = transform.GetNthTransform(i)
                         comp_path = os.path.join(
-                            output_dir,
+                            study_out,
                             f"{study_id}_{series_id}_transform_comp{i}.tfm"
                         )
                         sitk.WriteTransform(component, comp_path)
@@ -357,7 +390,7 @@ def register_study_deformable(
                 )
                 
                 seg_out = os.path.join(
-                    output_dir,
+                    study_out,
                     f"{study_id}_{series_id}_deformable_seg.nii.gz"
                 )
                 sitk.WriteImage(registered_seg, seg_out)
@@ -366,16 +399,9 @@ def register_study_deformable(
         except Exception as e:
             print(f"❌ Error: {e}")
     
-    # Copy reference
-    import shutil
-    ref_out = os.path.join(
-        output_dir,
-        f"{study_id}_{nc_series}_deformable.nii.gz"
-    )
-    shutil.copy(nc_file, ref_out)
     
     # Save stats
-    stats_file = os.path.join(output_dir, f"{study_id}_registration_stats.json")
+    stats_file = os.path.join(study_out, f"{study_id}_registration_stats.json")
     with open(stats_file, 'w') as f:
         json.dump(registrar.registration_stats, f, indent=2)
     
@@ -390,22 +416,20 @@ if __name__ == "__main__":
     labels_df = pd.read_csv(labels_csv)
     
     # Input: your existing affine-registered results
-    registered_affine_dir = MAIN_PATH + "test_registered_cases"
-    
+    registered_affine_dir = MAIN_PATH + "registered_cases"
+    method = "bspline"
     # Output: deformable registration results
-    deformable_output = MAIN_PATH + "deformable_registered"
+    deformable_output = MAIN_PATH + "deformable_registered_" + method
     os.makedirs(deformable_output, exist_ok=True)
     
     # Register each study with B-spline deformable
     for study_id in labels_df["StudyInstanceUID"].unique():
         study_affine = os.path.join(registered_affine_dir, study_id)
-        method = "bspline"
-        study_out = os.path.join(deformable_output+method, study_id)
         
         register_study_deformable(
             study_id,
             study_affine,
-            study_out,
+            deformable_output,
             labels_df,
             method=method,  # 'demons' or 'bspline'
             mesh_size=8  # 5-8 for aggressive, 10-15 for subtle
