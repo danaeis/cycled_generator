@@ -784,8 +784,7 @@ def save_sample_patches(
     device: torch.device,
     num_samples: int = 5,
     save_nifti: bool = True
-    
-):
+    ):
     """
     Save sample generated patches for visual inspection.
     
@@ -1150,7 +1149,11 @@ class CombinedLoss(nn.Module):
             losses['focal'] = torch.tensor(0.0, device=real_source.device)
 
         # Total generator loss
-        losses['total'] = losses['adv'] + losses.get('cycle', torch.tensor(0.0, device=real_source.device)) + losses['mse'] + losses['focal']
+        losses['total'] = 
+            losses['adv'] + 
+            losses.get('cycle', torch.tensor(0.0, device=real_source.device)) + 
+            losses['mse'] + 
+            losses['focal']
         
         return losses
 
@@ -1589,10 +1592,10 @@ class CTPhaseTrainer:
             lr_gen = self.opt_gen.param_groups[0]['lr']
             lr_disc = self.opt_disc_source.param_groups[0]['lr'] if hasattr(self, 'opt_disc_source') else 0.0
         
-            adv_weight = 0.0
+             = 0.0
             if hasattr(self, 'combined_loss') and hasattr(self.combined_loss, 'current_epoch'):
                 adv_weight = self.combined_loss.get_adv_weight()
-            elif hasattr(self, 'adv_schedule'):
+            elif hadv_weightasattr(self, 'adv_schedule'):
                 adv_weight = self.adv_schedule.get_weight(epoch)
             else:
                 # Simple warmup calculation

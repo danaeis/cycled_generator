@@ -8,3 +8,6 @@
 *.gz
 
 debug*/
+*/*/*.png
+
+tmux*
