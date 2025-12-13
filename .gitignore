@@ -11,3 +11,6 @@ debug*/
 */*/*.png
 
 tmux*
+
+data/data_quarantine_excluded_pairs/*
+train/single_slice/logs/*

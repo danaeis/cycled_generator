@@ -1,0 +1,142 @@
+case_id,in_main,in_quarantine,has_non_contrast,contrast_phases,usable
+1.2.392.200036.9116.2.5.1.37.2418751871.1574048385.958233,True,True,True,"['venous', 'arterial']",True
+1.2.392.200036.9116.2.5.1.37.2418751871.1574308298.505216,True,False,True,"['venous', 'arterial']",True
+1.2.392.200036.9116.2.5.1.37.2418751871.1574651082.95426,True,False,True,"['venous', 'arterial']",True
+1.2.392.200036.9116.2.5.1.37.2418751871.1574652927.757399,True,False,True,"['venous', 'arterial']",True
+1.2.392.200036.9116.2.5.1.37.2418751871.1574734831.134817,True,False,True,"['venous', 'arterial']",True
+1.2.392.200036.9116.2.5.1.37.2418751871.1574736893.449879,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.166.1580339212.908,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.166.1580339213.591,True,False,True,['venous'],True
+1.2.840.113619.2.278.3.717616.166.1580339218.937,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.166.1580339223.519,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.166.1580339223.956,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.166.1580339224.657,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.166.1580339230.481,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.202.1592287869.821,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.202.1592287871.359,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.202.1592287875.688,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.202.1592287876.601,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.202.1592287879.955,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.202.1592287881.707,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.204.1584947859.517,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.204.1584947875.688,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.204.1584947878.721,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.204.1584947881.751,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.204.1584947883.344,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.204.1584947888.428,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.204.1584947890.185,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.215.1582589428.278,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.228.1585527915.93,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.228.1585527919.20,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.228.1585527923.702,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.228.1585527924.199,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.239.1576237085.40,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.239.1576237164.135,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.239.1576237169.526,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.239.1576237177.531,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.239.1576237179.120,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713639.107,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713641.286,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713643.237,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713649.466,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713650.578,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713656.349,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713660.403,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713663.100,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.249.1585713672.454,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554882.977,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554893.267,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554897.97,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554905.422,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554905.716,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554911.88,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554916.256,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554917.92,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554922.726,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554936.606,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554937.154,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554937.658,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.259.1592554945.3,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649323.62,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649330.227,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649343.978,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649359.241,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649367.247,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649371.734,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649372.302,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649380.289,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649381.693,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649386.487,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649416.931,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649417.892,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.260.1578649418.868,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944966.46,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944966.506,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944967.557,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944968.878,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944973.161,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944975.372,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944978.330,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944978.649,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944978.934,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944983.828,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1587944984.611,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493247.138,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493249.833,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493262.858,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493267.487,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493269.25,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493292.675,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493295.610,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493297.670,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493300.681,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493314.315,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493317.912,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.286.1593493320.133,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703613.411,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703614.364,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703623.307,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703629.833,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703630.242,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703645.511,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703645.873,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703649.869,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703661.35,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703663.824,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703665.23,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703665.824,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.306.1582703674.772,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.310.1589696975.113,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.323.1577925255.997,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.338.1594256032.507,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.338.1594256103.303,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.551.1589814093.67,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.278.3.717616.551.1589814118.933,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.102.1580775830.218,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.102.1580775832.66,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.114.1571703288.442,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.114.1571963005.297,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.125.1572221105.250,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.130.1572394495.871,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.134.1574466852.398,True,True,True,"['venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.163.1572480858.906,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.164.1590190851.643,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.165.1590622402.677,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.19.1592781847.229,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.207.1576792853.630,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.225.1582503716.763,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.234.1583108506.652,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.265.1578356510.134,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.265.1590967284.608,True,False,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.27.1557706776.428,True,False,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.27.1589930824.148,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.294.1582849361.600,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.298.1585268502.426,True,False,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.47.1588634888.707,True,False,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.49.1557878721.790,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.52.1577664888.632,True,False,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.846.1591140723.79,True,False,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.849.1570580228.36,True,False,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.86.1583974413.503,True,False,True,"['venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.881.1583886732.445,True,True,True,"['other', 'venous', 'arterial']",True
+1.2.840.113619.2.359.3.2831208971.992.1592264343.741,True,True,True,"['other', 'venous', 'arterial']",True

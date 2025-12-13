@@ -5,6 +5,8 @@ import shutil
 import json
 import numpy as np
 
+# from align_data import apply_window_and_normalize, visualize_registration_quality, register_study
+
 def visualize_registration_quality(fixed, moving, registered, output_path):
     """Create checkerboard comparison."""
     import matplotlib.pyplot as plt
@@ -212,7 +214,7 @@ def register_study(study_id, cropped_dir, output_dir, labels_df):
         output_dir (str): Where to save registered results
         labels_df (pd.DataFrame): DataFrame with StudyInstanceUID, SeriesInstanceUID, Label
     """
-    os.makedirs(output_dir, exist_ok=True)
+    
 
     # --- Find the non-contrast row ---
     nc_row = labels_df[(labels_df["StudyInstanceUID"] == study_id) & (labels_df["Label"] == "Non-contrast")]
@@ -221,20 +223,26 @@ def register_study(study_id, cropped_dir, output_dir, labels_df):
         return
 
     nc_series = nc_row.iloc[0]["SeriesInstanceUID"]
-    nc_file = os.path.join(cropped_dir, f"{study_id}_{nc_series}_crop.nii.gz")
+    nc_file = os.path.join(cropped_dir, f"{study_id}/{study_id}_{nc_series}_aligned.nii.gz")
     if not os.path.exists(nc_file):
         # print(f"⚠️ Non-contrast file not found: {nc_file}")
         return
 
+
+    output_dir = os.path.join(output_dir, study_id)
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"\n📁 Registering Study: {study_id} | Non-contrast Series: {nc_series}")
     fixed = sitk.ReadImage(nc_file)
 
     # --- Process all series in this study ---
     series_rows = labels_df[labels_df["StudyInstanceUID"] == study_id]
     for _, row in series_rows.iterrows():
         series_id = row["SeriesInstanceUID"]
-        moving_file = os.path.join(cropped_dir, f"{study_id}_{series_id}_crop.nii.gz")
+        # print(f"\n🔄 Registering {study_id} | Series: {series_id}")
+        moving_file = os.path.join(cropped_dir, f"{study_id}/{study_id}_{series_id}_aligned.nii.gz")
 
         if not os.path.exists(moving_file) or moving_file == nc_file:
+            print(f"   ⏭️ Skipping (file not found or is non-contrast): {moving_file}")
             continue
 
         try:
@@ -299,7 +307,7 @@ def register_study(study_id, cropped_dir, output_dir, labels_df):
                 os.path.join(output_dir, f"{study_id}_{series_id}_registration_check.png")
             )
             # --- Apply same transform to mask if it exists ---
-            seg_file = os.path.join(cropped_dir, f"{study_id}_{series_id}_seg.nii.gz")
+            seg_file = os.path.join(cropped_dir, f"{study_id}/{study_id}_{series_id}_aligned_seg.nii.gz")
             if os.path.exists(seg_file):
                 seg = sitk.ReadImage(seg_file)
 
@@ -332,7 +340,7 @@ def register_study(study_id, cropped_dir, output_dir, labels_df):
     # نسخه خام هم کپی کن
     shutil.copy(nc_file, nc_out)
 
-    seg_nc_file = os.path.join(cropped_dir, f"{study_id}_{nc_series}_seg.nii.gz")
+    seg_nc_file = os.path.join(cropped_dir, f"{study_id}/{study_id}_{nc_series}_aligned_seg.nii.gz")
     # print("seg_nc_file", seg_nc_file)
     if os.path.exists(seg_nc_file):
         nc_seg_out = os.path.join(output_dir, f"{study_id}_{nc_series}_registered_seg.nii.gz")
@@ -341,20 +349,31 @@ def register_study(study_id, cropped_dir, output_dir, labels_df):
     print(f"   Copied reference non-contrast for {study_id}")
 
 # ------------------ USAGE ------------------
-
-# Load labels
-from configs import CROPPED_DIR, MAIN_PATH
+MAIN_PATH = "../../ncct_cect/vindr_ds/"
 labels_csv = MAIN_PATH + "labels.csv"
 labels_df = pd.read_csv(labels_csv)   # change sep="," if CSV is comma separated
 
-cropped_dir = MAIN_PATH + "cropped_volumes"
-registered_dir = MAIN_PATH + "registered_cases"
+# cropped_dir = MAIN_PATH + "aligned_volumes"
+cropped_dir = "./aligned_output"
+registered_dir = "./registered_cases_aligned"
 
 os.makedirs(registered_dir, exist_ok=True)
+study_ids = labels_df["StudyInstanceUID"].unique()
 
-# Register each study
-for study_id in labels_df["StudyInstanceUID"].unique():
-    study_out = os.path.join(registered_dir, study_id)
-    register_study(study_id, cropped_dir, study_out, labels_df)
+for idx, study_id in enumerate(study_ids, 1):
+    # print(f"\n{'#'*80}")
+    # print(f"Processing Study {idx}/{len(study_ids)}: {study_id}")
+    # print(f"{'#'*80}")
+    
+    register_study(study_id, cropped_dir, registered_dir, labels_df)
+    
+    # print("\n" + "="*80)
+    # print("✅ ALL REGISTRATIONS COMPLETED")
+    # print("="*80)
 
-print("✅ Registration completed for all studies")
+# # Register each study
+# for study_id in labels_df["StudyInstanceUID"].unique():
+#     study_out = os.path.join(registered_dir, study_id)
+#     register_study(study_id, cropped_dir, study_out, labels_df)
+
+# print("✅ Registration completed for all studies")

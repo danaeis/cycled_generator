@@ -1,9 +1,9 @@
 import torch
 
 train_config = {
-    'data_dir': '../ncct_cect/vindr_ds/deformable_registered_bspline',
+    'data_dir': '../ncct_cect/vindr_ds/test_deformable_registeredbspline',
     'labels_csv': '../ncct_cect/vindr_ds/labels.csv',
-    'output_dir': '../ncct_cect/vindr_ds/memeff_patch_bspline_exclude_training_thrshF_organ1',
+    'output_dir': '../ncct_cect/vindr_ds/debug_memeff_patch_bspline_exclude_training_thrshF',
     
     # Patch configuration
     'patch_size': (128, 192),
@@ -27,32 +27,34 @@ train_config = {
     'cache_size': 12,  # Keep 12 volumes in cache (adjust based on RAM)
     'use_memmap': True,  # Use memory-mapped files
     
+
     # Loss weights (ALL PRESERVED)
-    'disc_lr_multiplier': 1.599,
-    'lambda_cycle': 10,
+    'disc_lr_multiplier': 2,
+    'lambda_cycle': 5,
     'lambda_mse_initial': 1.0,
-    'lambda_mse_final': 50.0,
+    'lambda_mse_final': 10.0,
     'mse_warmup_epochs': 50,
-    'lambda_adv': 0.1,
+    'lambda_adv': 8.0,
     
     'lambda_organ'      : 1,     # weight of the *masked* MSE term
     'organ_weight'      : 5.0,    # how many times organ voxels count inside the MSE
     
     # Training stability (ALL PRESERVED)
-    'adv_warmup_epochs': 8,
+    'disc_warmup_epochs': 5,
+    'adv_warmup_epochs': 5,
     'disc_updates_per_gen': 2,
     'real_label_smoothing': 0.896,
     'fake_label_smoothing': 0.118,
     
     # Training parameters
-    'batch_size': 2,
+    'batch_size': 4,
     'learning_rate': 2e-4,
     'epochs': 100,
     
     'device': 'cuda' if torch.cuda.is_available() else 'cpu',
     
     # Debug options
-    'debug_patches': False,
+    'debug_patches': True,
     'debug_output_dir': './debug_patches',
     'keep_last_n_checkpoints': 3,
     'save_samples_interval': 1,

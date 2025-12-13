@@ -777,13 +777,14 @@ class MetricsCalculator:
 
 
 def save_sample_patches(
-    generator: nn.Module,
-    val_loader: DataLoader,
-    epoch: int,
-    save_dir: Path,
-    device: torch.device,
-    num_samples: int = 5,
-    save_nifti: bool = True
+        generator: nn.Module,
+        val_loader: DataLoader,
+        epoch: int,
+        save_dir: Path,
+        device: torch.device,
+        num_samples: int = 5,
+        save_nifti: bool = True,
+        discrete_range: Tuple[int, int] = (0, 255)
     ):
     """
     Save sample generated patches for visual inspection.
@@ -795,23 +796,33 @@ def save_sample_patches(
         save_dir: Directory to save samples
         device: Device to run on
         num_samples: Number of samples to save
+        save_nifti: Whether to save NIfTI volumes
+        discrete_range: Original data range for denormalization
     """
     generator.eval()
-    save_dir = Path(save_dir) / f"epoch_{epoch}"
+    save_dir = Path(save_dir) / f"epoch_{epoch:03d}"
     save_dir.mkdir(parents=True, exist_ok=True)
     
-    # Create subdirectories for different output types
+    # Create subdirectories
     png_dir = save_dir / 'comparisons'
     nifti_dir = save_dir / 'nifti_volumes'
     png_dir.mkdir(exist_ok=True)
     if save_nifti:
         nifti_dir.mkdir(exist_ok=True)
 
-    # ✅ DELETE OLD EPOCH FOLDERS (keep only last 10 epochs)
+    # Phase index to name mapping (inverse of dataloader)
+    idx_to_phase = {
+        0: 'non-contrast',
+        1: 'arterial',
+        2: 'portal/venous',
+        3: 'delayed'
+    }
+
+    # Delete old epoch folders (keep only last 10)
     parent_dir = save_dir.parent
     epoch_dirs = sorted(parent_dir.glob('epoch_*'), key=lambda x: int(x.name.split('_')[1]))
     
-    if len(epoch_dirs) > 10:  # Keep only last 10 epochs
+    if len(epoch_dirs) > 10:
         for old_dir in epoch_dirs[:-10]:
             try:
                 import shutil
@@ -820,22 +831,22 @@ def save_sample_patches(
             except Exception as e:
                 logger.warning(f"Could not delete {old_dir}: {e}")
     
-    # ✅ RANDOMLY SELECT PATCHES INSTEAD OF SEQUENTIAL SELECTION
-    # First, collect all batches
+    # Collect all batches for random sampling
     logger.info("Collecting validation batches for random sampling...")
     all_batches = []
     with torch.no_grad():
         for batch in val_loader:
-            all_batches.append(batch)
+            if batch is not None:  # Handle safe_collate returning None
+                all_batches.append(batch)
     
-    total_patches = len(all_batches) * (all_batches[0]['source'].size(0) if all_batches else 0)
-    logger.info(f"Total validation patches available: {total_patches}")
-    
-    # Randomly select batch indices
     if len(all_batches) == 0:
         logger.warning("No validation batches available!")
         return
     
+    total_patches = sum(b['source'].size(0) for b in all_batches)
+    logger.info(f"Total validation patches available: {total_patches}")
+    
+    # Randomly select batch indices
     num_batches_to_sample = min(num_samples, len(all_batches))
     selected_batch_indices = np.random.choice(
         len(all_batches), 
@@ -854,19 +865,30 @@ def save_sample_patches(
             batch = all_batches[batch_idx]
             
             try:
+                # ===== GET DATA FROM BATCH (matching dataloader keys) =====
                 real_source = batch['source'].to(device)
                 real_target = batch['target'].to(device)
-                source_phase_idx = batch['source_phase_idx'].to(device)
-                target_phase_idx = batch['target_phase_idx'].to(device)
-                source_phase = batch['source_phase']
-                target_phase = batch['target_phase']
-                case_id = batch['case_id']
+                source_phase = batch['source_phase'].to(device)  # Tensor of indices
+                target_phase = batch['target_phase'].to(device)  # Tensor of indices
+                case_ids = batch['case_id']  # List of strings
                 
-                # Generate target and reconstruct source
-                generated_target = generator(real_source, target_phase_idx)
-                reconstructed_source = generator(generated_target, source_phase_idx)
+                # ===== GENERATE WITH CORRECT FUNCTION SIGNATURE =====
+                # Forward: source -> generated_target
+                generated_target = generator(
+                    real_source, 
+                    source_phase=source_phase, 
+                    target_phase=target_phase
+                )
                 
-                # Process each sample in batch (or randomly select from batch)
+                # Cycle: generated_target -> reconstructed_source
+                # Note: swap source and target phases for reconstruction
+                reconstructed_source = generator(
+                    generated_target, 
+                    source_phase=target_phase,  # Current phase is target
+                    target_phase=source_phase   # Want to go back to source
+                )
+                
+                # Process samples from batch
                 batch_size = real_source.size(0)
                 samples_from_batch = min(batch_size, num_samples - saved_count)
                 
@@ -877,107 +899,131 @@ def save_sample_patches(
                     sample_indices = range(batch_size)
                 
                 for i in sample_indices:
-                    # ===== SAVE PNG COMPARISON =====
-                    # Get middle slice from 3D patch [1, D, H, W] -> [H, W]
-                    mid_slice = real_source.shape[2] // 2
+                    # ===== GET PHASE NAMES FROM INDICES =====
+                    src_phase_idx = source_phase[i].item()
+                    tgt_phase_idx = target_phase[i].item()
+                    src_phase_name = idx_to_phase.get(src_phase_idx, f'phase_{src_phase_idx}')
+                    tgt_phase_name = idx_to_phase.get(tgt_phase_idx, f'phase_{tgt_phase_idx}')
+                    case_id = case_ids[i] if isinstance(case_ids, list) else case_ids
                     
-                    source_slice = real_source[i, 0, mid_slice].cpu().numpy()
-                    target_slice = real_target[i, 0, mid_slice].cpu().numpy()
-                    generated_slice = generated_target[i, 0, mid_slice].cpu().numpy()
-                    reconstructed_slice = reconstructed_source[i, 0, mid_slice].cpu().numpy()
+                    # ===== EXTRACT SLICES =====
+                    # Handle both 3D [B, C, D, H, W] and 2D [B, C, 1, H, W] cases
+                    if real_source.dim() == 5:
+                        mid_slice = real_source.shape[2] // 2
+                        source_slice = real_source[i, 0, mid_slice].cpu().numpy()
+                        target_slice = real_target[i, 0, mid_slice].cpu().numpy()
+                        generated_slice = generated_target[i, 0, mid_slice].cpu().numpy()
+                        reconstructed_slice = reconstructed_source[i, 0, mid_slice].cpu().numpy()
+                    else:
+                        # 2D case
+                        source_slice = real_source[i, 0].cpu().numpy()
+                        target_slice = real_target[i, 0].cpu().numpy()
+                        generated_slice = generated_target[i, 0].cpu().numpy()
+                        reconstructed_slice = reconstructed_source[i, 0].cpu().numpy()
                     
-                    # Create comparison figure
+                    # ===== CREATE COMPARISON FIGURE =====
                     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
                     
-                    # Row 1: Forward generation (source -> target)
-                    im0 = axes[0, 0].imshow(source_slice, cmap='gray', vmin=-1, vmax=1)
-                    axes[0, 0].set_title(f'Source: {source_phase[i]}', fontsize=12, fontweight='bold')
+                    # ===== ROW 1: Forward generation (source -> target) =====
+                    # NOTE: Data is in [0, 1] range, not [-1, 1]!
+                    im0 = axes[0, 0].imshow(source_slice, cmap='gray', vmin=0, vmax=1)
+                    axes[0, 0].set_title(f'Source: {src_phase_name}', fontsize=12, fontweight='bold')
                     axes[0, 0].axis('off')
                     plt.colorbar(im0, ax=axes[0, 0], fraction=0.046, pad=0.04)
                     
-                    im1 = axes[0, 1].imshow(generated_slice, cmap='gray', vmin=-1, vmax=1)
-                    axes[0, 1].set_title(f'Generated: {target_phase[i]}', fontsize=12, fontweight='bold')
+                    im1 = axes[0, 1].imshow(generated_slice, cmap='gray', vmin=0, vmax=1)
+                    axes[0, 1].set_title(f'Generated: {tgt_phase_name}', fontsize=12, fontweight='bold')
                     axes[0, 1].axis('off')
                     plt.colorbar(im1, ax=axes[0, 1], fraction=0.046, pad=0.04)
                     
-                    im2 = axes[0, 2].imshow(target_slice, cmap='gray', vmin=-1, vmax=1)
-                    axes[0, 2].set_title(f'Ground Truth: {target_phase[i]}', fontsize=12, fontweight='bold')
+                    im2 = axes[0, 2].imshow(target_slice, cmap='gray', vmin=0, vmax=1)
+                    axes[0, 2].set_title(f'Ground Truth: {tgt_phase_name}', fontsize=12, fontweight='bold')
                     axes[0, 2].axis('off')
                     plt.colorbar(im2, ax=axes[0, 2], fraction=0.046, pad=0.04)
                     
-                    # Row 2: Cycle reconstruction and difference maps
-                    im3 = axes[1, 0].imshow(reconstructed_slice, cmap='gray', vmin=-1, vmax=1)
-                    axes[1, 0].set_title(f'Reconstructed: {source_phase[i]}', fontsize=12, fontweight='bold')
+                    # ===== ROW 2: Cycle reconstruction and difference maps =====
+                    im3 = axes[1, 0].imshow(reconstructed_slice, cmap='gray', vmin=0, vmax=1)
+                    axes[1, 0].set_title(f'Reconstructed: {src_phase_name}', fontsize=12, fontweight='bold')
                     axes[1, 0].axis('off')
                     plt.colorbar(im3, ax=axes[1, 0], fraction=0.046, pad=0.04)
                     
-                    # Difference map: generated vs ground truth
+                    # Difference: generated vs ground truth
                     diff_gen = np.abs(generated_slice - target_slice)
-                    im4 = axes[1, 1].imshow(diff_gen, cmap='hot', vmin=0, vmax=1)
-                    axes[1, 1].set_title('|Generated - GT|', fontsize=12, fontweight='bold')
+                    im4 = axes[1, 1].imshow(diff_gen, cmap='hot', vmin=0, vmax=0.5)
+                    axes[1, 1].set_title(f'|Generated - GT| (max={diff_gen.max():.3f})', fontsize=12, fontweight='bold')
                     axes[1, 1].axis('off')
                     plt.colorbar(im4, ax=axes[1, 1], fraction=0.046, pad=0.04)
                     
-                    # Difference map: reconstructed vs source
+                    # Difference: reconstructed vs source
                     diff_cycle = np.abs(reconstructed_slice - source_slice)
-                    im5 = axes[1, 2].imshow(diff_cycle, cmap='hot', vmin=0, vmax=1)
-                    axes[1, 2].set_title('|Reconstructed - Source|', fontsize=12, fontweight='bold')
+                    im5 = axes[1, 2].imshow(diff_cycle, cmap='hot', vmin=0, vmax=0.5)
+                    axes[1, 2].set_title(f'|Reconstructed - Source| (max={diff_cycle.max():.3f})', fontsize=12, fontweight='bold')
                     axes[1, 2].axis('off')
                     plt.colorbar(im5, ax=axes[1, 2], fraction=0.046, pad=0.04)
                     
-                    # Calculate metrics for this sample
+                    # Calculate metrics
                     mse_gen = np.mean((generated_slice - target_slice) ** 2)
                     mse_cycle = np.mean((reconstructed_slice - source_slice) ** 2)
+                    psnr_gen = 10 * np.log10(1.0 / (mse_gen + 1e-10))
                     
-                    # Add overall title with metrics
+                    # Overall title with metrics
                     fig.suptitle(
-                        f'Epoch {epoch} - Case: {case_id[i]} - '
-                        f'MSE (Gen): {mse_gen:.4f}, MSE (Cycle): {mse_cycle:.4f}',
+                        f'Epoch {epoch} | Case: {case_id} | '
+                        f'{src_phase_name} → {tgt_phase_name}\n'
+                        f'MSE (Gen): {mse_gen:.4f} | PSNR: {psnr_gen:.2f} dB | MSE (Cycle): {mse_cycle:.4f}',
                         fontsize=14, fontweight='bold', y=0.98
                     )
                     
-                    plt.tight_layout()
+                    plt.tight_layout(rect=[0, 0, 1, 0.95])
                     
-                    # Save PNG figure
-                    png_path = png_dir / f'sample_{saved_count:03d}_{case_id[i]}.png'
+                    # Save PNG
+                    png_path = png_dir / f'sample_{saved_count:03d}_{case_id}.png'
                     plt.savefig(png_path, dpi=150, bbox_inches='tight')
                     plt.close()
                     
                     # ===== SAVE NIFTI VOLUMES =====
                     if save_nifti:
-                        # Extract full 3D patches [1, D, H, W] -> [D, H, W]
-                        source_vol = real_source[i, 0].cpu().numpy()
-                        target_vol = real_target[i, 0].cpu().numpy()
-                        generated_vol = generated_target[i, 0].cpu().numpy()
-                        reconstructed_vol = reconstructed_source[i, 0].cpu().numpy()
+                        # Extract full 3D patches
+                        if real_source.dim() == 5:
+                            source_vol = real_source[i, 0].cpu().numpy()
+                            target_vol = real_target[i, 0].cpu().numpy()
+                            generated_vol = generated_target[i, 0].cpu().numpy()
+                            reconstructed_vol = reconstructed_source[i, 0].cpu().numpy()
+                        else:
+                            source_vol = real_source[i, 0].cpu().numpy()[np.newaxis, ...]
+                            target_vol = real_target[i, 0].cpu().numpy()[np.newaxis, ...]
+                            generated_vol = generated_target[i, 0].cpu().numpy()[np.newaxis, ...]
+                            reconstructed_vol = reconstructed_source[i, 0].cpu().numpy()[np.newaxis, ...]
                         
-                        # Create case-specific subdirectory
-                        case_nifti_dir = nifti_dir / f'sample_{saved_count:03d}_{case_id[i]}'
+                        # Denormalize back to original range for NIfTI
+                        source_vol_orig = (source_vol * discrete_range[1]).astype(np.float32)
+                        target_vol_orig = (target_vol * discrete_range[1]).astype(np.float32)
+                        generated_vol_orig = (generated_vol * discrete_range[1]).astype(np.float32)
+                        reconstructed_vol_orig = (reconstructed_vol * discrete_range[1]).astype(np.float32)
+                        
+                        case_nifti_dir = nifti_dir / f'sample_{saved_count:03d}_{case_id}'
                         case_nifti_dir.mkdir(exist_ok=True)
                         
-                        # Save as NIfTI files (transpose back to standard orientation if needed)
-                        # Note: volumes are in [D, H, W] format, NIfTI standard is typically [W, H, D]
                         def save_nifti_volume(volume, filepath):
-                            """Helper to save volume as NIfTI"""
-                            # Transpose from [D, H, W] to [W, H, D] for standard NIfTI orientation
                             volume_transposed = np.transpose(volume, (2, 1, 0))
                             nifti_img = nib.Nifti1Image(volume_transposed, affine=np.eye(4))
                             nib.save(nifti_img, filepath)
                         
-                        save_nifti_volume(source_vol, case_nifti_dir / 'source.nii.gz')
-                        save_nifti_volume(target_vol, case_nifti_dir / 'target_groundtruth.nii.gz')
-                        save_nifti_volume(generated_vol, case_nifti_dir / 'target_generated.nii.gz')
-                        save_nifti_volume(reconstructed_vol, case_nifti_dir / 'source_reconstructed.nii.gz')
+                        save_nifti_volume(source_vol_orig, case_nifti_dir / 'source.nii.gz')
+                        save_nifti_volume(target_vol_orig, case_nifti_dir / 'target_groundtruth.nii.gz')
+                        save_nifti_volume(generated_vol_orig, case_nifti_dir / 'target_generated.nii.gz')
+                        save_nifti_volume(reconstructed_vol_orig, case_nifti_dir / 'source_reconstructed.nii.gz')
                         
                         # Save metadata
                         metadata = {
                             'epoch': epoch,
-                            'case_id': case_id[i],
-                            'source_phase': source_phase[i],
-                            'target_phase': target_phase[i],
+                            'case_id': case_id,
+                            'source_phase': src_phase_name,
+                            'target_phase': tgt_phase_name,
                             'patch_shape': list(source_vol.shape),
                             'mse_generated': float(mse_gen),
-                            'mse_cycle': float(mse_cycle)
+                            'mse_cycle': float(mse_cycle),
+                            'psnr_generated': float(psnr_gen)
                         }
                         
                         import json
@@ -990,17 +1036,115 @@ def save_sample_patches(
                         break
                         
             except Exception as e:
-                logger.error(f"Error saving sample patches: {e}")
+                logger.error(f"Error saving sample {batch_idx}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
     
     logger.info(f"✓ Saved {saved_count} sample patches to {save_dir}")
-    logger.info(f"  - PNG comparisons: {png_dir}")
-    if save_nifti:
-        logger.info(f"  - NIfTI volumes: {nifti_dir}")
 
 
+def save_training_samples(
+        generator: nn.Module,
+        batch: Dict[str, torch.Tensor],
+        epoch: int,
+        batch_idx: int,
+        save_dir: Path,
+        device: torch.device,
+        num_samples: int = 4
+    ):
+    """
+    Save sample outputs during training for monitoring.
+    Call this periodically during training (e.g., every N batches).
+    
+    Args:
+        generator: The generator model
+        batch: Current training batch
+        epoch: Current epoch
+        batch_idx: Current batch index
+        save_dir: Directory to save samples
+        device: Device to run on
+        num_samples: Number of samples to save from batch
+    """
+    generator.eval()
+    
+    train_samples_dir = Path(save_dir) / 'training_samples'
+    train_samples_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Phase index to name mapping
+    idx_to_phase = {
+        0: 'NC', 1: 'Art', 2: 'PV', 3: 'Del'
+    }
+    
+    with torch.no_grad():
+        real_source = batch['source'].to(device)
+        real_target = batch['target'].to(device)
+        source_phase = batch['source_phase'].to(device)
+        target_phase = batch['target_phase'].to(device)
+        
+        # Generate
+        generated_target = generator(
+            real_source,
+            source_phase=source_phase,
+            target_phase=target_phase
+        )
+        
+        # Select samples
+        batch_size = min(num_samples, real_source.size(0))
+        
+        # Create figure with multiple samples
+        fig, axes = plt.subplots(batch_size, 4, figsize=(16, 4 * batch_size))
+        if batch_size == 1:
+            axes = axes.reshape(1, -1)
+        
+        for i in range(batch_size):
+            # Get middle slice
+            if real_source.dim() == 5:
+                mid_slice = real_source.shape[2] // 2
+                src = real_source[i, 0, mid_slice].cpu().numpy()
+                tgt = real_target[i, 0, mid_slice].cpu().numpy()
+                gen = generated_target[i, 0, mid_slice].cpu().numpy()
+            else:
+                src = real_source[i, 0].cpu().numpy()
+                tgt = real_target[i, 0].cpu().numpy()
+                gen = generated_target[i, 0].cpu().numpy()
+            
+            diff = np.abs(gen - tgt)
+            
+            src_name = idx_to_phase.get(source_phase[i].item(), '?')
+            tgt_name = idx_to_phase.get(target_phase[i].item(), '?')
+            
+            # Plot
+            axes[i, 0].imshow(src, cmap='gray', vmin=0, vmax=1)
+            axes[i, 0].set_title(f'Source ({src_name})')
+            axes[i, 0].axis('off')
+            
+            axes[i, 1].imshow(gen, cmap='gray', vmin=0, vmax=1)
+            axes[i, 1].set_title(f'Generated ({tgt_name})')
+            axes[i, 1].axis('off')
+            
+            axes[i, 2].imshow(tgt, cmap='gray', vmin=0, vmax=1)
+            axes[i, 2].set_title(f'Target ({tgt_name})')
+            axes[i, 2].axis('off')
+            
+            axes[i, 3].imshow(diff, cmap='hot', vmin=0, vmax=0.3)
+            axes[i, 3].set_title(f'Diff (MSE={np.mean(diff**2):.4f})')
+            axes[i, 3].axis('off')
+        
+        plt.suptitle(f'Epoch {epoch}, Batch {batch_idx}', fontsize=14, fontweight='bold')
+        plt.tight_layout()
+        
+        # Save with rotating buffer (keep last 20 training samples)
+        sample_path = train_samples_dir / f'train_e{epoch:03d}_b{batch_idx:05d}.png'
+        plt.savefig(sample_path, dpi=100, bbox_inches='tight')
+        plt.close()
+        
+        # Cleanup old training samples
+        all_samples = sorted(train_samples_dir.glob('train_*.png'))
+        if len(all_samples) > 20:
+            for old_sample in all_samples[:-20]:
+                old_sample.unlink()
+    
 
 # ============================================================================
 # LOSS FUNCTIONS

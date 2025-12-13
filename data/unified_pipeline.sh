@@ -6,7 +6,7 @@ set -e
 # Usage: ./unified_pipeline.sh <dataset_name> <data_path> [options]
 
 # Default configuration
-DATASET_NAME=""
+DATASET_NAME="pars-ct"
 DATA_PATH=""
 OUTPUT_BASE_DIR=""
 PHASE_LABELS_CSV=""

@@ -23,7 +23,15 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 def load_phase_mapping(labels_csv_path: str) -> Dict[str, Dict[str, str]]:
+    """
+    Load phase mapping from CSV file.
     
+    Args:
+        labels_csv_path: Path to labels CSV
+        
+    Returns:
+        Mapping: {case_uid: {series_uid: phase_label}}
+    """
     df = pd.read_csv(labels_csv_path)
     
     phase_mapping = {}
@@ -189,9 +197,9 @@ def analyze_case_similarities(
                     target_slice = target_vol[idx]
                     
                     # Normalize slices
-                    source_norm = (source_slice - source_slice.mean()) / (source_slice.std() + 1e-8)
-                    target_norm = (target_slice - target_slice.mean()) / (target_slice.std() + 1e-8)
-                    
+                    # source_norm = (source_slice - source_slice.mean()) / (source_slice.std() + 1e-8)
+                    # target_norm = (target_slice - target_slice.mean()) / (target_slice.std() + 1e-8)
+                    source_norm, target_norm = source_slice, target_slice
                     # SSIM
                     try:
                         ssim_val = ssim(
@@ -492,8 +500,10 @@ def visualize_excluded_pairs(
                 target_slice = target_vol[slice_idx]
                 
                 # Normalize for display
-                source_norm = (source_slice - source_slice.mean()) / (source_slice.std() + 1e-8)
-                target_norm = (target_slice - target_slice.mean()) / (target_slice.std() + 1e-8)
+                # source_norm = (source_slice - source_slice.mean()) / (source_slice.std() + 1e-8)
+                # target_norm = (target_slice - target_slice.mean()) / (target_slice.std() + 1e-8)
+
+                source_norm, target_norm = source_slice, target_slice
                 
                 # Clip for better visualization
                 source_display = np.clip(source_norm, -3, 3)
@@ -567,29 +577,34 @@ def visualize_excluded_pairs(
     print(f"  Check these images to verify exclusion criteria!")
 
 def create_data_pairs(
-    data_dir: str,
+    config: Dict,
     phase_mapping: Dict = None,
     test_size: float = 0.15,
     val_size: float = 0.15,
     random_state: int = 42,
-    exclude_pairs: Dict[str, List[Tuple[str, str, str]]] = None  # NEW: Dict of pairs to exclude
+    exclude_pairs: Dict[str, List[Tuple[str, str, str]]] = None
     ) -> Dict[str, List[Dict]]:
     """
     Create training/validation/test data pairs from directory structure.
     
     Args:
-        data_dir: Root directory with case folders
+        config: Configuration dict with data_dir and target_phase
         phase_mapping: Optional phase mapping from CSV
         test_size: Test set proportion
         val_size: Validation set proportion
         random_state: Random seed
+        exclude_pairs: Dict[split_name -> List[(case_id, source_phase, target_phase)]]
+                      Specific pairs to exclude based on low similarity
         
     Returns:
         Dictionary with 'train', 'val', 'test' data pairs
     """
-    data_dir = Path(data_dir)
+    data_dir = Path(config.get('data_dir', 'data'))
+    target_phase = config.get('target_phase', 'portal')
     
-    # Collect all cases and their available files
+    # ============================================================
+    # STEP 1: Collect all available phases for each case
+    # ============================================================
     cases = {}
     
     for case_dir in data_dir.iterdir():
@@ -599,15 +614,17 @@ def create_data_pairs(
         case_id = case_dir.name
         cases[case_id] = {}
         
+        tag = "_registered" # or deformable
         # Find all registered image files
-        for nii_file in case_dir.glob("*_deformable.nii.gz"):
+        for nii_file in case_dir.glob(f"*{tag}_norm.nii.gz"):
+            # print("nii file", nii_file)
             if "_seg" in str(nii_file):
                 continue  # Skip segmentation files
                 
             # Extract series ID and phase
-            filename = nii_file.stem.replace("_deformable", "").replace(".nii", "")
+            filename = nii_file.stem.replace(f"{tag}_norm", "").replace(".nii", "")
             parts = filename.split('_')
-            
+            # print("filename", filename)
             if len(parts) >= 2:
                 series_id = parts[1]
                 
@@ -623,41 +640,50 @@ def create_data_pairs(
                 }
                 
                 # Check for segmentation
-                seg_file = case_dir / f"{filename}_deformable_seg.nii.gz"
+                seg_file = case_dir / f"{filename}{tag}_seg.nii.gz"
                 if seg_file.exists():
                     cases[case_id][phase]['segmentation'] = seg_file
     
-    # Filter valid cases (need non-contrast + at least one contrast phase)
+    # ============================================================
+    # STEP 2: Filter valid cases (must have non-contrast + target phase)
+    # ============================================================
     valid_cases = []
     for case_id, phases in cases.items():
-        if 'non-contrast' in phases:
-            contrast_phases = [p for p in phases.keys() if p != 'non-contrast']
-            if contrast_phases:
-                valid_cases.append((case_id, phases))
+        # Must have non-contrast
+        if 'non-contrast' not in phases:
+            continue
+        
+        # Must have the target phase we're interested in
+        if target_phase not in phases:
+            continue
+        
+        valid_cases.append((case_id, phases))
     
-    logger.info(f"Found {len(valid_cases)} valid cases")
-
-    # NEW: Apply exclusion list
-    if exclude_pairs:
-        before = len(valid_cases)
-        valid_cases = [(cid, phases) for cid, phases in valid_cases if cid not in exclude_pairs]
-        after = len(valid_cases)
-        logger.info(f"Excluded {before - after} cases from training (similarity filter)")
+    logger.info(f"Found {len(valid_cases)} valid cases with non-contrast + {target_phase}")
     
-    # Split cases into train/val/test
+    # ============================================================
+    # STEP 3: Split cases into train/val/test
+    # ============================================================
     case_ids = [case[0] for case in valid_cases]
+    
     train_ids, temp_ids = train_test_split(
         case_ids, 
-        test_size=test_size+val_size, 
+        test_size=test_size + val_size, 
         random_state=random_state
     )
     val_ids, test_ids = train_test_split(
         temp_ids, 
-        test_size=test_size/(test_size+val_size), 
+        test_size=test_size / (test_size + val_size), 
         random_state=random_state
     )
     
+    logger.info(f"Split: {len(train_ids)} train, {len(val_ids)} val, {len(test_ids)} test cases")
+    
+    # ============================================================
+    # STEP 4: Create pairs with similarity-based exclusions
+    # ============================================================
     def make_pairs(case_subset, split_name):
+        """Create pairs for a given split, excluding low-similarity pairs."""
         pairs = []
         excluded_count = 0
         
@@ -666,43 +692,118 @@ def create_data_pairs(
         if exclude_pairs and split_name in exclude_pairs:
             exclusion_set = set(exclude_pairs[split_name])
         
+        # Get case data lookup
+        case_data_lookup = dict(valid_cases)
+        
         for case_id in case_subset:
-            case_data = dict(valid_cases)[case_id]
-            nc_info = case_data['non-contrast']
+            if case_id not in case_data_lookup:
+                continue
             
-            # Create pairs: non-contrast -> each contrast phase
-            for phase, phase_info in case_data.items():
-                if phase != 'non-contrast':
-                    # Check if this specific pair should be excluded
-                    pair_key = (case_id, 'non-contrast', phase)
-                    
-                    if pair_key in exclusion_set:
-                        excluded_count += 1
-                        continue  # Skip this pair
-                    
-                    pairs.append({
-                        'source_path': nc_info['image'],
-                        'target_path': phase_info['image'],
-                        'source_phase': 'non-contrast',
-                        'target_phase': phase,
-                        'case_id': case_id,
-                        'source_series': nc_info['series_id'],
-                        'target_series': phase_info['series_id'],
-                        'source_seg': nc_info.get('segmentation'),
-                        'target_seg': phase_info.get('segmentation')
-                    })
+            case_data = case_data_lookup[case_id]
+            
+            # Get non-contrast info
+            nc_info = case_data.get('non-contrast')
+            if not nc_info:
+                continue
+            
+            # Get target phase info
+            target_info = case_data.get(target_phase)
+            if not target_info:
+                continue
+            
+            # Check if this specific pair should be excluded
+            pair_key = (case_id, 'non-contrast', target_phase)
+            
+            # if pair_key in exclusion_set:
+            #     excluded_count += 1
+            #     logger.debug(f"Excluding pair: {case_id} (non-contrast → {target_phase})")
+            #     continue
+            
+            # Add the pair
+            pairs.append({
+                'source_path': nc_info['image'],
+                'target_path': target_info['image'],
+                'source_phase': 'non-contrast',
+                'target_phase': target_phase,
+                'case_id': case_id,
+                'source_series': nc_info['series_id'],
+                'target_series': target_info['series_id'],
+                'source_seg': nc_info.get('segmentation'),
+                'target_seg': target_info.get('segmentation')
+            })
         
         if excluded_count > 0:
-            logger.info(f"  Excluded {excluded_count} pairs from {split_name} (similarity filter)")
+            logger.info(f"  {split_name}: Excluded {excluded_count}/{len(case_subset)} pairs (low similarity)")
         
         return pairs
     
+    # ============================================================
+    # STEP 5: Generate final splits
+    # ============================================================
     splits = {
         'train': make_pairs(train_ids, 'train'),
         'val': make_pairs(val_ids, 'val'),
         'test': make_pairs(test_ids, 'test')
     }
+    
+    logger.info(f"\nFinal data splits:")
+    logger.info(f"  Train: {len(train_ids)} cases → {len(splits['train'])} pairs")
+    logger.info(f"  Val:   {len(val_ids)} cases → {len(splits['val'])} pairs")
+    logger.info(f"  Test:  {len(test_ids)} cases → {len(splits['test'])} pairs")
+    
+    # ============================================================
+    # STEP 6: Validation check
+    # ============================================================
+    if len(splits['train']) == 0:
+        logger.warning("⚠ WARNING: No training pairs generated!")
+        logger.warning(f"  Target phase: {target_phase}")
+        logger.warning(f"  Valid cases: {len(valid_cases)}")
+        if exclude_pairs:
+            logger.warning(f"  Exclusions provided: {sum(len(v) for v in exclude_pairs.values())} pairs")
+    
     return splits
+
+# ================================================================
+# FINAL FIXED: create_data_pairs (supports both modes + strict exclusion)
+# ================================================================
+
+def load_exclusion_list(path: str = "../../similarity_analysis/pairs_to_exclude.txt"):
+    """Load your pairs_to_exclude.txt file correctly."""
+    exclude = {'train': [], 'val': [], 'test': []}
+    path = Path(path)
+    if not path.exists():
+        logger.info("No exclusion file found. Proceeding without filtering.")
+        return exclude
+
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) != 4:
+                continue
+            case_id, src_phase, tgt_phase, split = parts
+            exclude[split].append((case_id, src_phase, tgt_phase))
+
+    total = sum(len(v) for v in exclude.values())
+    logger.info(f"Loaded {total} pair-level exclusions from {path}")
+    return exclude
+
+
+def verify_no_leaks(data_pairs: List[Dict], exclude_pairs: Dict, split_name: str):
+    """Final safety check — will crash if any bad pair leaked."""
+    bad_keys = {(p['case_id'], p['source_phase'], p['target_phase']) for p in data_pairs}
+    excluded_keys = {(c, s, t) for c, s, t in exclude_pairs.get(split_name, [])}
+
+    leaked = bad_keys & excluded_keys
+    if leaked:
+        logger.error(f"LEAK DETECTED in {split_name}: {len(leaked)} bad pairs found!")
+        for k in list(leaked)[:10]:
+            logger.error(f"  → {k}")
+        raise RuntimeError(f"Excluded pairs leaked into {split_name}!")
+    else:
+        logger.info(f"Verification OK: No excluded pairs in {split_name}")
 
 # ============================================================================
 # COMPLETE TRAINING SCRIPT (OPTIMIZED)
@@ -725,7 +826,7 @@ def run_full_training():
     Complete training script with OPTIMIZED volume caching.
     All original functionality preserved + faster data loading.
     """
-    from training_phase_gen import MemoryOptimizedTrainer, CTPhaseDataset
+    from training_phase_gen_slice import MemoryOptimizedTrainer, CTPhaseDataset
     from config import train_config
     # Configuration
     config = train_config
@@ -774,19 +875,19 @@ def run_full_training():
         except Exception as e:
             print(f"✗ Could not load phase mapping: {e}")
     # 1. First, analyze similarities
-    data_splits = create_data_pairs(config['data_dir'], phase_mapping=phase_mapping)
-
+    data_splits = create_data_pairs(config, phase_mapping=phase_mapping)
+    print("len train",len(data_splits['train']))
     # 2. Analyze similarities at PAIR level
-    exclude_pairs, similarity_df = analyze_case_similarities(
-        data_splits,
-        output_dir='./similarity_analysis',
-        min_similarity_threshold=0.45,  # Try 0.45 or 0.40 to be less aggressive
-        num_slices_to_check=20,
-        force_recompute=config.get('force_similarity_recompute', False)
-    )
-    print(f"✓ Data splits recreated with exclusions")
-    print(f"  Train: {len(data_splits['train'])} pairs (after filtering)")
-    print(f"  Val: {len(data_splits['val'])} pairs (after filtering)")
+    # exclude_pairs, similarity_df = analyze_case_similarities(
+    #     data_splits,
+    #     output_dir='../../similarity_analysis',
+    #     min_similarity_threshold=0.45,  # Try 0.45 or 0.40 to be less aggressive
+    #     num_slices_to_check=20,
+    #     force_recompute=config.get('force_similarity_recompute', False)
+    # )
+    # print(f"✓ Data splits recreated with exclusions")
+    # print(f"  Train: {len(data_splits['train'])} pairs (after filtering)")
+    # print(f"  Val: {len(data_splits['val'])} pairs (after filtering)")
     print(f"  Test: {len(data_splits['test'])} pairs (after filtering)")
     
     # # Visualize excluded pairs
@@ -799,12 +900,27 @@ def run_full_training():
     #     num_samples=config.get('num_excluded_to_visualize', 50)
     # )
 
-    # 2. Recreate data splits with exclusions
+    # Load exclusions from your file
+    exclude_pairs_dict = load_exclusion_list("../../similarity_analysis/pairs_to_exclude.txt")
+
+    # Create final clean data splits
     data_splits = create_data_pairs(
-        config['data_dir'],
+        config,
         phase_mapping=phase_mapping,
-        exclude_pairs=exclude_pairs  # Apply filtering
+        exclude_pairs=exclude_pairs_dict
     )
+
+    # FINAL SAFETY CHECK — will crash if anything is wrong
+    # for split in ['train', 'val', 'test']:
+    #     verify_no_leaks(data_splits[split], exclude_pairs_dict, split)
+
+    # # 2. Recreate data splits with exclusions
+    # data_splits = create_data_pairs(
+    #     config,
+    #     phase_mapping=phase_mapping,
+    #     exclude_pairs=exclude_pairs  # Apply filtering
+    # )
+    print("len train",len(data_splits['train']))
 
     
     # Step 2: Create OPTIMIZED datasets with caching
@@ -812,29 +928,23 @@ def run_full_training():
     train_dataset = CTPhaseDataset(
         data_splits['train'],
         patch_size=config['patch_size'],
-        patch_depth=config['patch_depth'],
+        slice_range=config['slice_range'],
         overlap_ratio=config['overlap_ratio'],
         augment=False,
         cache_size=config['cache_size'],  # NEW: Enable caching
         use_memmap=config['use_memmap'],   # NEW: Use memory mapping
-        min_intensity_ratio=config['min_intensity_ratio'],
-        min_mean=config['min_mean'],
-        min_std=config['min_std'],
-        validate_patches=config['validate_patches']
+       
     )
-    
+
     val_dataset = CTPhaseDataset(
         data_splits['val'],
         patch_size=config['patch_size'],
-        patch_depth=config['patch_depth'],
+        slice_range=config['slice_range'],
         overlap_ratio=0.5,
         augment=False,
         cache_size=config['cache_size'],  # NEW: Enable caching
         use_memmap=config['use_memmap'],   # NEW: Use memory mapping
-        min_intensity_ratio=config['min_intensity_ratio'],
-        min_mean=config['min_mean'],
-        min_std=config['min_std'],
-        validate_patches=False
+        
     )
     
     print(f"✓ Train dataset: {len(train_dataset)} patches")
@@ -849,7 +959,23 @@ def run_full_training():
         for i, pair in enumerate(val_dataset.data_pairs):
             coords = [c for c in val_dataset.patch_coords if c['pair_idx'] == i]
             print(f"  Case {i} ({pair['case_id']}): {len(coords)} patches")
+    # # Step 3: Debug dataset (optional)
+    # if config.get('debug_patches', False):
+    #     print("\nStep 3: Visualizing Patches")
+    #     debug_dataset_with_visualization(
+    #         train_dataset,
+    #         num_samples=config.get('num_debug_samples', 5),
+    #         output_dir=config.get('debug_output_dir', './debug_patches')
+    #     )
+        
+    #     if len(train_dataset.data_pairs) > 0:
+    #         create_patch_coverage_map(
+    #             train_dataset,
+    #             case_idx=0,
+    #             output_dir=config.get('debug_output_dir', './debug_patches')
+    #         )
     
+    # Step 4: Create dataloaders
     print("\nStep 4: Creating DataLoaders")
     train_loader = DataLoader(
         train_dataset,
