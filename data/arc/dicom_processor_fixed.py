@@ -20,7 +20,7 @@ class StandardizedDICOMProcessor:
     and integration with existing DICOM traversal workflow.
     """
     
-    def __init__(self, target_spacing: Tuple[float, float, float] = (1.5, 1.5, 1.5)):
+    def __init__(self, target_spacing: Tuple[float, float, float] = (1, 1, 1.5)):
         """
         Initialize the DICOM processor.
         
@@ -852,54 +852,54 @@ def debug_problematic_series(series_data: List[Dict], processor: StandardizedDIC
             response = input("\nContinue to next series? (y/n): ")
             if response.lower() != 'y':
                 break
-    batch_dir: str,
-    labels_csv: str,
-    output_base_dir: str,
-    target_spacing: Tuple[float, float, float] = (1.5, 1.5, 1.5),
-    overwrite: bool = False
-) -> None:
-    """
-    Complete workflow: traverse dataset, select optimal series, and convert to standardized NIfTI.
+#     batch_dir: str,
+#     labels_csv: str,
+#     output_base_dir: str,
+#     target_spacing: Tuple[float, float, float] = (1.5, 1.5, 1.5),
+#     overwrite: bool = False
+# ) -> None:
+#     """
+#     Complete workflow: traverse dataset, select optimal series, and convert to standardized NIfTI.
     
-    Args:
-        batch_dir: Directory containing batch subdirectories
-        labels_csv: CSV file with labels
-        output_base_dir: Base directory for output files
-        target_spacing: Target spacing for standardization
-        overwrite: Whether to overwrite existing files
-    """
-    # Initialize processor
-    processor = StandardizedDICOMProcessor(target_spacing=target_spacing)
+#     Args:
+#         batch_dir: Directory containing batch subdirectories
+#         labels_csv: CSV file with labels
+#         output_base_dir: Base directory for output files
+#         target_spacing: Target spacing for standardization
+#         overwrite: Whether to overwrite existing files
+#     """
+#     # Initialize processor
+#     processor = StandardizedDICOMProcessor(target_spacing=target_spacing)
     
-    # Create temporary pickle file for series data
-    temp_pkl = os.path.join(output_base_dir, "temp_series_data.pkl")
-    os.makedirs(output_base_dir, exist_ok=True)
+#     # Create temporary pickle file for series data
+#     temp_pkl = os.path.join(output_base_dir, "temp_series_data.pkl")
+#     os.makedirs(output_base_dir, exist_ok=True)
     
-    try:
-        # Step 1: Traverse and select optimal series
-        print("Step 1: Traversing dataset and selecting optimal series...")
-        series_data = save_dicom_paths_with_standardization(
-            batch_dir=batch_dir,
-            labels_csv=labels_csv,
-            output_pkl=temp_pkl,
-            processor=processor
-        )
+#     try:
+#         # Step 1: Traverse and select optimal series
+#         print("Step 1: Traversing dataset and selecting optimal series...")
+#         series_data = save_dicom_paths_with_standardization(
+#             batch_dir=batch_dir,
+#             labels_csv=labels_csv,
+#             output_pkl=temp_pkl,
+#             processor=processor
+#         )
         
-        # Step 2: Convert to standardized NIfTI
-        print("\nStep 2: Converting to standardized NIfTI format...")
-        process_series_list_to_standardized_nifti(
-            series_data=series_data,
-            output_base_dir=output_base_dir,
-            processor=processor,
-            overwrite=overwrite
-        )
+#         # Step 2: Convert to standardized NIfTI
+#         print("\nStep 2: Converting to standardized NIfTI format...")
+#         process_series_list_to_standardized_nifti(
+#             series_data=series_data,
+#             output_base_dir=output_base_dir,
+#             processor=processor,
+#             overwrite=overwrite
+#         )
         
-        print("\n✓ Complete standardization workflow finished!")
+#         print("\n✓ Complete standardization workflow finished!")
         
-    finally:
-        # Clean up temporary files
-        if os.path.exists(temp_pkl):
-            os.remove(temp_pkl)
+#     finally:
+#         # Clean up temporary files
+#         if os.path.exists(temp_pkl):
+#             os.remove(temp_pkl)
 
 # Example usage with debugging
 def main():
@@ -912,7 +912,7 @@ def main():
     output_base_dir = "/path/to/standardized/output"
     
     # Initialize processor
-    processor = StandardizedDICOMProcessor(target_spacing=(1.5, 1.5, 1.5))
+    processor = StandardizedDICOMProcessor(target_spacing=(1, 1, 1.5))
     
     # OPTION 1: Debug a specific problematic series first
     # processor.print_debug_report("/path/to/problematic/dicom/series")

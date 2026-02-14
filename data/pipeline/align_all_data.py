@@ -9,9 +9,9 @@ import pandas as pd
 import numpy as np
 import SimpleITK as sitk
 from pathlib import Path
-
+from configs import MAIN_PATH
 # Import the functions (assuming they're in the same file or imported)
-from align_data import (
+from align_data_v2 import (
     align_all_series_in_study,
     verify_study_alignment
 )
@@ -34,8 +34,6 @@ def find_cropped_volume_file(study_id: str, series_id: str, input_dir: Path, suf
     return matches[0]
 
 
-def find_seg_file(study_id: str, series_id: str, input_dir: Path):
-    return find_cropped_volume_file(study_id, series_id, input_dir, suffix="_seg.nii.gz")
 
 def find_existing_noncontrast_series(study_rows, input_dir, study_id):
     """
@@ -73,13 +71,13 @@ def process_single_study_example():
     # ============================================================
     # CONFIGURATION
     # ============================================================
-    MAIN_PATH = "../../../ncct_cect/vindr_ds/"
+    
     INPUT_DIR = Path(MAIN_PATH + "cropped_volumes")
     OUTPUT_DIR = Path(MAIN_PATH + "aligned_volumes")
     LABELS_CSV = MAIN_PATH + "labels.csv"
     
     # Study to process (replace with your actual study ID)
-    STUDY_ID = "1.2.840.113619.2.359.3.2831208971.47.1588634888.707"
+    STUDY_ID = "1.2.840.113619.2.359.3.2831208971.108.1589585466.773"
     
     print(f"\n{'='*80}")
     print(f"MULTI-SERIES Z-ALIGNMENT EXAMPLE")
@@ -389,7 +387,7 @@ def create_alignment_verification_plots(aligned_volumes, metadata, output_dir):
 
 def process_all_studies(force_recompute: bool = False):
     """Process all studies with skip logic."""
-    MAIN_PATH = "../../ncct_cect/vindr_ds/"
+    
     INPUT_DIR = Path(MAIN_PATH + "cropped_volumes")
     OUTPUT_DIR = Path(MAIN_PATH + "aligned_volumes")
     LABELS_CSV = MAIN_PATH + "labels.csv"
@@ -481,7 +479,7 @@ def process_all_studies(force_recompute: bool = False):
                 output_dir=str(study_output_dir),
                 body_threshold=-600,
                 min_overlap_slices=30,
-                force_recompute=force_recompute  # NEW
+                # force_recompute=force_recompute  # NEW
             )
             
             if alignment_result.get('skipped', False):

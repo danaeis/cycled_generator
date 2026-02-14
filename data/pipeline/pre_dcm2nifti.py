@@ -11,5 +11,5 @@ original_volume_paths = complete_standardization_workflow(
         labels_csv=LABELS_CSV,
         output_base_dir=ORIGINAL_DIR,
         pkl_path=CACHE_PATH,
-        # overwrite_nifti=True  # Set to True to force reprocessing
+        overwrite=True  # Set to True to force reprocessing
     )

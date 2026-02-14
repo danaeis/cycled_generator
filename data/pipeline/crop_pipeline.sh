@@ -28,7 +28,7 @@ for vol in $nifti_list; do
     combined_seg="${seg_dir}/${study_name}_${vol_name}_seg.nii.gz"
     out_name="${study_name}_${vol_name}"
 
-    echo "Cropping $vol with mask..."
-    python3 data/crop_with_mask.py "$vol" "$combined_seg" "$output_dir" "$out_name" 10
-
+    echo "Cropping $vol with mask $combined_seg ..."
+    python3 ./data/crop_with_mask.py "$vol" "$combined_seg" "$output_dir" "$out_name" 10
+    echo "-----------------"
 done

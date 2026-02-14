@@ -15,6 +15,7 @@ from skimage.metrics import structural_similarity as ssim
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import pandas as pd
+from configs import MAIN_PATH
 
 # =============================================================================
 # ORIGIN NORMALIZATION FUNCTIONS
@@ -190,6 +191,35 @@ def force_common_origin(
     
     return result
 
+def verify_study_alignment(study_dir: str):
+    """Verify all series in a study have matching dimensions."""
+    import glob
+    
+    files = glob.glob(os.path.join(study_dir, "*_aligned.nii.gz"))
+    
+    if not files:
+        print(f"No aligned volumes found in {study_dir}")
+        return False
+    
+    print(f"\nVerifying {len(files)} volumes in {study_dir}...")
+    
+    sizes = {}
+    for f in files:
+        img = sitk.ReadImage(f)
+        size = img.GetSize()
+        spacing = img.GetSpacing()
+        sizes[os.path.basename(f)] = (size, spacing)
+    
+    # Check all match
+    reference = list(sizes.values())[0]
+    all_match = all(s == reference for s in sizes.values())
+    
+    print("\nSize check:")
+    for name, (size, spacing) in sizes.items():
+        match = "✓" if (size, spacing) == reference else "✗"
+        print(f"  {match} {name}: {size}, spacing: {spacing}")
+    
+    return all_match
 
 def verify_physical_alignment(
         volumes: Dict[str, sitk.Image],
@@ -277,7 +307,7 @@ def verify_physical_alignment(
 # UPDATED ALIGNMENT FUNCTIONS WITH ORIGIN NORMALIZATION
 # =============================================================================
 
-def align_all_series_in_study_v3(
+def align_all_series_in_study(
         study_id: str,
         series_paths: Dict[str, dict],
         reference_series_id: str,
@@ -1469,7 +1499,7 @@ def align_all_studies(
         
         # Run alignment
         try:
-            result = align_all_series_in_study_v3(
+            result = align_all_series_in_study(
                 study_id=study_id,
                 series_paths=series_paths,
                 reference_series_id=reference_series_id,
@@ -1516,9 +1546,9 @@ if __name__ == "__main__":
     
     
     # Configuration
-    CROPPED_DIR = "../../ncct_cect/vindr_ds/cropped_volumes"
-    OUTPUT_DIR = "../../ncct_cect/vindr_ds/aligned_cases"
-    LABELS_CSV = "../../ncct_cect/vindr_ds/labels.csv"
+    CROPPED_DIR = Path(MAIN_PATH + "cropped_volumes")
+    OUTPUT_DIR = Path(MAIN_PATH + "aligned_cases")
+    LABELS_CSV = MAIN_PATH + "labels.csv"
     
     # Run batch alignment
     align_all_studies(
@@ -1535,7 +1565,6 @@ if __name__ == "__main__":
 #     import pandas as pd
     
 #     # Configuration
-#     MAIN_PATH = "../../ncct_cect/vindr_ds/cropped_volumes/"
     
 #     # Option 1: Fix already-aligned volumes
 #     print("\n" + "="*80)
@@ -1575,7 +1604,7 @@ if __name__ == "__main__":
 
 #     }
     
-#     result = align_all_series_in_study_v3(
+#     result = align_all_series_in_study(
 #         study_id=study_id,
 #         series_paths=series_paths,
 #         reference_series_id="series1",

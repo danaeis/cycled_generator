@@ -1661,36 +1661,36 @@ def visualize_z_alignment(
     print(f"   ✓ Alignment visualization saved: {output_path}")
 
 
-# Example usage:if __name__ == "__main__":
-#     Paths to example volumes
-#     Load labels
-import os
-import pandas as pd
-from configs import CROPPED_DIR, MAIN_PATH
-labels_csv = MAIN_PATH + "labels.csv"
-labels_df = pd.read_csv(labels_csv)   # change sep="," if CSV is comma separated
+# # Example usage:if __name__ == "__main__":
+# #     Paths to example volumes
+# #     Load labels
+# import os
+# import pandas as pd
+# from configs import CROPPED_DIR, MAIN_PATH
+# labels_csv = MAIN_PATH + "labels.csv"
+# labels_df = pd.read_csv(labels_csv)   # change sep="," if CSV is comma separated
 
-cropped_dir = MAIN_PATH + "cropped_volumes"
-fixed_path = '/Users/macbook/develope/thesis/ncct_cect/vindr_ds/cropped_volumes/1.2.840.113619.2.278.3.717616.204.1584947883.344_1.2.840.113619.2.278.3.717616.204.1584947883.349.3_crop.nii.gz'    
-moving_path = '/Users/macbook/develope/thesis/ncct_cect/vindr_ds/cropped_volumes/1.2.840.113619.2.278.3.717616.204.1584947883.344_1.2.840.113619.2.278.3.717616.204.1584947883.792.12_crop.nii.gz'    
-output_vis_path = 'alignment_quality.png'
-study_id = 'example_study'
-series_id = 'example_series'    
-# Read volumes
-fixed_sitk = sitk.ReadImage(fixed_path)
-moving_sitk = sitk.ReadImage(moving_path)    
-# Align volumes
-aligned_fixed, aligned_moving, align_info = align_volumes_z_axis(
-    fixed_sitk, moving_sitk, study_id, series_id
-)    
+# cropped_dir = MAIN_PATH + "cropped_volumes"
+# fixed_path = '/Users/macbook/develope/thesis/ncct_cect/vindr_ds/cropped_volumes/1.2.840.113619.2.278.3.717616.204.1584947883.344_1.2.840.113619.2.278.3.717616.204.1584947883.349.3_crop.nii.gz'    
+# moving_path = '/Users/macbook/develope/thesis/ncct_cect/vindr_ds/cropped_volumes/1.2.840.113619.2.278.3.717616.204.1584947883.344_1.2.840.113619.2.278.3.717616.204.1584947883.792.12_crop.nii.gz'    
+# output_vis_path = 'alignment_quality.png'
+# study_id = 'example_study'
+# series_id = 'example_series'    
+# # Read volumes
+# fixed_sitk = sitk.ReadImage(fixed_path)
+# moving_sitk = sitk.ReadImage(moving_path)    
+# # Align volumes
+# aligned_fixed, aligned_moving, align_info = align_volumes_z_axis(
+#     fixed_sitk, moving_sitk, study_id, series_id
+# )    
 
 
-# Visualize alignment quality
-visualize_z_alignment(
-    fixed_sitk, moving_sitk,
-    aligned_fixed, aligned_moving,
-    output_vis_path
-)
-sitk.WriteImage(aligned_fixed, 'aligned_fixed4.nii.gz')
-sitk.WriteImage(aligned_moving, 'aligned_moving4.nii.gz')
+# # Visualize alignment quality
+# visualize_z_alignment(
+#     fixed_sitk, moving_sitk,
+#     aligned_fixed, aligned_moving,
+#     output_vis_path
+# )
+# sitk.WriteImage(aligned_fixed, 'aligned_fixed4.nii.gz')
+# sitk.WriteImage(aligned_moving, 'aligned_moving4.nii.gz')
 

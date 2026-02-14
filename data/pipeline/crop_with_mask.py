@@ -13,6 +13,12 @@ out_dir = sys.argv[3]
 out_name = sys.argv[4]
 margin = int(sys.argv[5]) if len(sys.argv) > 4 else 10  # default margin = 10 voxels
 
+if os.path.exists(vol_path) and os.path.exists(mask_path):
+    pass
+else:
+    print(f"⚠️ No volume found in path, skipping.")
+    sys.exit(0)
+
 # Load images
 vol_img = nib.load(vol_path)
 mask_img = nib.load(mask_path)

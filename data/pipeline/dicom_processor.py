@@ -225,6 +225,35 @@ class StandardizedDICOMProcessor:
             raise ValueError(f"Could not load DICOM series from {dicom_path}")
     
 
+    def _apply_dicom_scaling(self, image: sitk.Image, sample_dicom_path: str) -> sitk.Image:
+        """
+        Apply DICOM rescale slope and intercept if present.
+        """
+        try:
+            ds = pydicom.dcmread(sample_dicom_path)
+            
+            rescale_slope = getattr(ds, 'RescaleSlope', 1.0)
+            rescale_intercept = getattr(ds, 'RescaleIntercept', 0.0)
+            
+            if rescale_slope != 1.0 or rescale_intercept != 0.0:
+                logger.info(f"Applying DICOM scaling: slope={rescale_slope}, intercept={rescale_intercept}")
+                
+                # Apply scaling: output = slope * input + intercept
+                scaled_image = sitk.Cast(image, sitk.sitkFloat32)
+                scaled_image = scaled_image * rescale_slope + rescale_intercept
+                
+                # Convert back to appropriate type if needed
+                if rescale_slope == 1.0 and rescale_intercept >= 0:
+                    if image.GetPixelID() in [sitk.sitkUInt8, sitk.sitkUInt16]:
+                        scaled_image = sitk.Cast(scaled_image, image.GetPixelID())
+                
+                return scaled_image
+            
+        except Exception as e:
+            logger.warning(f"Could not apply DICOM scaling: {e}")
+        
+        return image
+    
     def _stack_individual_dicoms(self, dicom_path: str) -> sitk.Image:
         """
         Last resort: manually read and stack individual DICOM files.
@@ -585,7 +614,7 @@ def process_series_list_to_standardized_nifti(
     successful_conversions = 0
     failed_conversions = 0
     
-    print(f"\nProcessing {len(series_data)} series to standardized NIfTI format...")
+    # print(f"\nProcessing {len(series_data)} series to standardized NIfTI format...")
     
     for i, series_info in enumerate(series_data, 1):
         try:
@@ -598,7 +627,7 @@ def process_series_list_to_standardized_nifti(
             output_filename = f"{study_uid}_{series_uid}_standardized.nii.gz"
             output_path = os.path.join(output_base_dir, output_filename)
             
-            print(f"[{i}/{len(series_data)}] Processing: {study_uid}_{phase}")
+            # print(f"[{i}/{len(series_data)}] Processing: {study_uid}_{phase}")
             
             # Convert with standardization
             processor.convert_standardized_dicom_to_nifti(
